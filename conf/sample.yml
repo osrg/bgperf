@@ -2,19 +2,22 @@ target:
     type: gobgp
     as: 1000
     router-id: '10.10.0.1'
-    local-address: '10.10.0.1'
+    local-address: '10.10.0.1/16'
+    docker:
+        name: 'target'
+        image: 'gobgp'
 tester:
-    '10.10.0.2':
+    '10.10.0.2/16':
         as: 1001
         router-id: '10.10.0.2'
-        local-address: '10.10.0.2'
+        local-address: '10.10.0.2/16'
         paths:
             - '10.10.0.0/24'
             - '20.20.0.0/24'
-    '10.10.0.3':
+    '10.10.0.3/16':
         as: 1002
         router-id: '10.10.0.3'
-        local-address: '10.10.0.3'
+        local-address: '10.10.0.3/16'
         paths:
             - '10.10.0.0/24'
             - '30.30.0.0/24'

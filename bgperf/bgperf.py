@@ -61,18 +61,122 @@ def run_gobgp(conf):
             config['Neighbors'] = {'NeighborList': []}
         config['Neighbors']['NeighborList'].append(n)
 
-    with open('{0}/{1}'.format(CONFIG_DIR, 'gobgp.conf'), 'w') as f:
+    with open('{0}/{1}'.format(CONFIG_DIR, 'gobgpd.conf'), 'w') as f:
         f.write(toml.dumps(config))
 
-    with settings(warn_only=True):
-        local('pkill gobgpd')
-    local('gobgpd -f {0}/{1} > {0}/target.log 2>&1 &'.format(CONFIG_DIR, 'gobgp.conf'))
+
+    if 'docker' in conf['target']:
+        DOCKER_SHARED_DIR = '/root/shared_volume'
+        name = 'gobgp'
+        if 'name' in conf['target']['docker']:
+            name = conf['target']['docker']['name']
+
+        image = 'osrg/gobgp'
+        if 'image' in conf['target']['docker']:
+            image = conf['target']['docker']['image']
+
+        c = CmdBuffer(' ')
+        c << 'docker run --privileged=true'
+        c << '-v {0}:{1}'.format(CONFIG_DIR, DOCKER_SHARED_DIR)
+        c << '--name {0} -id {1}'.format(name, image)
+        with settings(warn_only=True):
+            local('docker rm -f {0}'.format(name))
+        local(str(c))
+        local('docker exec {0} ip li set up dev lo'.format(name))
+        local('pipework {0} {1} {2}'.format(BR_NAME, name, conf['target']['local-address']))
+        def _start_gobgp():
+            c = CmdBuffer()
+            c << '#!/bin/bash'
+            c << '/go/bin/gobgpd -f {0}/gobgpd.conf -l {1} > ' \
+                 '{0}/gobgpd.log 2>&1'.format(DOCKER_SHARED_DIR, 'debug')
+
+            cmd = 'echo "{0:s}" > {1}/start.sh'.format(c, CONFIG_DIR)
+            local(cmd, capture=True)
+            cmd = "chmod 755 {0}/start.sh".format(CONFIG_DIR)
+            local(cmd, capture=True)
+            local("docker exec -d {0} {1}/start.sh".format(name, DOCKER_SHARED_DIR))
+        _start_gobgp()
+    else:
+        local('ip a add {0} dev {1}'.format(conf['target']['local-address'], BR_NAME))
+        with settings(warn_only=True):
+            local('pkill gobgpd')
+        local('gobgpd -f {0}/{1} > {0}/target.log 2>&1 &'.format(CONFIG_DIR, 'gobgpd.conf'))
+
+
+def run_bird(conf):
+    c = CmdBuffer()
+    c << 'router id {0};'.format(conf['target']['router-id'])
+    c << 'listen bgp port 179;'
+    c << 'protocol device { }'
+    c << 'protocol direct {'
+    c << '  disabled;'
+    c << '}'
+    c << 'protocol kernel {'
+    c << '  disabled;'
+    c << '}'
+    c << 'table master;'
+    for peer in conf['tester'].itervalues():
+        c << 'table table_{0};'.format(peer['as'])
+        c << 'protocol pipe pipe_{0} {{'.format(peer['as'])
+        c << '  table master;'
+        c << '  mode transparent;'
+        c << '  peer table table_{0};'.format(peer['as'])
+        c << '  import all;'
+        c << '  export all;'
+        c << '}'
+        c << 'protocol bgp bgp_{0} {{'.format(peer['as'])
+        c << '  local as {0};'.format(conf['target']['as'])
+        n_addr = peer['local-address'].split('/')[0]
+        c << '  neighbor {0} as {1};'.format(n_addr, peer['as'])
+        c << '  import all;'
+        c << '  export all;'
+        c << '  rs client;'
+        c << '}'
+
+    with open('{0}/{1}'.format(CONFIG_DIR, 'bird.conf'), 'w') as f:
+        f.write(str(c))
+
+    if 'docker' in conf['target']:
+        DOCKER_SHARED_DIR = '/etc/bird'
+        name = 'bird'
+        if conf['target']['docker'] and 'name' in conf['target']['docker']:
+            name = conf['target']['docker']['name']
+
+        image = 'osrg/bird'
+        if conf['target']['docker'] and 'image' in conf['target']['docker']:
+            image = conf['target']['docker']['image']
+
+        c = CmdBuffer(' ')
+        c << 'docker run --privileged=true'
+        c << '-v {0}:{1}'.format(CONFIG_DIR, DOCKER_SHARED_DIR)
+        c << '--name {0} -id {1}'.format(name, image)
+        with settings(warn_only=True):
+            local('docker rm -f {0}'.format(name))
+        local(str(c))
+        local('docker exec {0} ip li set up dev lo'.format(name))
+        local('pipework {0} {1} {2}'.format(BR_NAME, name, conf['target']['local-address']))
+        def _start_bird():
+            c = CmdBuffer()
+            c << '#!/bin/bash'
+            c << 'bird'
+            cmd = 'echo "{0:s}" > {1}/start.sh'.format(c, CONFIG_DIR)
+            local(cmd)
+            cmd = 'chmod 755 {0}/start.sh'.format(CONFIG_DIR)
+            local(cmd)
+            local('docker exec {0} {1}/start.sh'.format(name, DOCKER_SHARED_DIR))
+        _start_bird()
+    else:
+        local('ip a add {0} dev {1}'.format(conf['target']['local-address'], BR_NAME))
+        with settings(warn_only=True):
+            local('pkill bird')
+        local('bird -c {0}/{1}'.format(CONFIG_DIR, 'bird.conf'))
 
 
 def run_target(conf):
-    local('ip a add {0} dev {1}'.format(conf['target']['local-address'], BR_NAME))
     if conf['target']['type'] == 'gobgp':
         run_gobgp(conf)
+    elif conf['target']['type'] == 'bird':
+        run_bird(conf)
     else:
         raise Exception('unsupported target type')
 

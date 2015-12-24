@@ -20,6 +20,7 @@ from argparse import ArgumentParser
 
 def main():
     parser = ArgumentParser(description='Generate BGPerf configuration file.')
+    parser.add_argument('-t', '--target-type', default='gobgp', type=str)
     parser.add_argument('-n', '--num-peer', default=10, type=int)
     parser.add_argument('-p', '--num-prefix', default=10, type=int)
     parser.add_argument('-i', '--identical', action='store_true')
@@ -28,10 +29,13 @@ def main():
 
     conf = {}
     conf['target'] = {
-        'type': 'gobgp',
+        'type': args.target_type,
         'as': 1000,
         'router-id': '10.10.0.1',
-        'local-address': '10.10.0.1',
+        'local-address': '10.10.0.1/16',
+        'docker': {
+            'name': 'target',
+        },
     }
     conf['tester'] = {}
     for i in range(2, args.num_peer+2):
@@ -43,7 +47,7 @@ def main():
         conf['tester'][router_id] = {
             'as': 1000 + i,
             'router-id': router_id,
-            'local-address': router_id,
+            'local-address': router_id + '/16',
             'paths': paths,
         }
 
