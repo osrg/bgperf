@@ -94,7 +94,7 @@ def run_gobgp(conf):
             c << '#!/bin/bash'
             c << "ulimit -n 65536"
             c << '/go/bin/gobgpd -f {0}/gobgpd.conf -l {1} > ' \
-                 '{0}/gobgpd.log 2>&1'.format(DOCKER_SHARED_DIR, 'debug')
+                 '{0}/gobgpd.log 2>&1'.format(DOCKER_SHARED_DIR, 'info')
 
             cmd = 'echo "{0:s}" > {1}/start.sh'.format(c, CONFIG_DIR)
             local(cmd, capture=True)
