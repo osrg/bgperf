@@ -45,7 +45,7 @@ def run_gobgp(conf):
                     'as': conf['target']['as'],
                     'router-id': conf['target']['router-id']
                 },
-            }
+            }}
     for peer in conf['tester'].itervalues():
         n = {'config': {
                 'neighbor-address': peer['local-address'].split('/')[0],
