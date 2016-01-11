@@ -40,26 +40,31 @@ class CmdBuffer(list):
 
 
 def run_gobgp(conf):
-    config = {'Global': {'GlobalConfig': {'As': conf['target']['as'], 'RouterId': conf['target']['router-id'], 'Port': -1}}}
+    config = {'global': {
+                'config': {
+                    'as': conf['target']['as'],
+                    'router-id': conf['target']['router-id']
+                },
+            }
     for peer in conf['tester'].itervalues():
-        n = {'NeighborConfig': {
-            'NeighborAddress': peer['local-address'].split('/')[0],
-            'PeerAs': peer['as'],
-            },
-            'Transport': {
-                'TransportConfig': {
-                    'LocalAddress': conf['target']['local-address'].split('/')[0],
+        n = {'config': {
+                'neighbor-address': peer['local-address'].split('/')[0],
+                'peer-as': peer['as']
+                },
+             'transport': {
+                'config': {
+                    'local-address': conf['target']['local-address'].split('/')[0],
                 },
             },
-            'RouteServer': {
-                'RouteServerConfig': {
-                    'RouteServerClient': True,
+            'route-server': {
+                'config': {
+                    'route-server-client': True,
                 },
             },
         }
-        if 'Neighbors' not in config:
-            config['Neighbors'] = {'NeighborList': []}
-        config['Neighbors']['NeighborList'].append(n)
+        if 'neighbors' not in config:
+            config['neighbors'] = []
+        config['neighbors'].append(n)
 
     with open('{0}/{1}'.format(CONFIG_DIR, 'gobgpd.conf'), 'w') as f:
         f.write(toml.dumps(config))
