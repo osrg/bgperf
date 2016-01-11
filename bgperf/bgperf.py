@@ -187,8 +187,24 @@ def run_target(conf):
 
 
 def run_tester(conf):
+    DOCKER_SHARED_DIR = '/root/shared_volume'
+    name = 'tester'
+    image = 'exabgp'
+    c = CmdBuffer(' ')
+    c << 'docker run --privileged=true'
+    c << '-v {0}:{1}'.format(CONFIG_DIR, DOCKER_SHARED_DIR)
+    c << '--name {0} -id {1} bash'.format(name, image)
+    with settings(warn_only=True):
+        local('docker rm -f {0}'.format(name))
+
+    local(str(c))
+    local('docker exec {0} ip li set up dev lo'.format(name))
+    local('pipework {0} {1} 0/0'.format(BR_NAME, name))
+
+    startup_script = CmdBuffer('\n')
+    startup_script << "#!/bin/sh"
     for peer in conf['tester'].itervalues():
-        local('ip a add {0} dev {1}'.format(peer['local-address'], BR_NAME))
+        startup_script << 'ip a add {0} dev eth1'.format(peer['local-address'])
         cmd = CmdBuffer()
         cmd << 'neighbor {0} {{'.format(conf['target']['local-address'].split('/')[0])
         cmd << '    router-id {0};'.format(peer['router-id'])
@@ -202,17 +218,21 @@ def run_tester(conf):
             cmd << '    }'
         cmd << '}'
 
-        with open('{0}/{1}.conf'.format(CONFIG_DIR, peer['router-id']), 'w') as f:
+        with open('{0}/exabgp/{1}.conf'.format(CONFIG_DIR, peer['router-id']), 'w') as f:
             f.write(str(cmd))
 
         cmd = CmdBuffer(' ')
-        cmd << 'env exabgp.log.destination={0}/{1}.log'.format(CONFIG_DIR, peer['router-id'])
+        cmd << 'env exabgp.log.destination={0}/exabgp/{1}.log'.format(DOCKER_SHARED_DIR, peer['router-id'])
         cmd << 'exabgp.daemon.daemonize=true'
         cmd << 'exabgp.daemon.user=root'
-        cmd << 'exabgp.daemon.pid={0}/{1}.pid'.format(CONFIG_DIR, peer['router-id'])
-        cmd << 'exabgp {0}/{1}.conf'.format(CONFIG_DIR, peer['router-id'])
-        local(str(cmd))
+        cmd << '/root/exabgp/sbin/exabgp {0}/exabgp/{1}.conf'.format(DOCKER_SHARED_DIR, peer['router-id'])
+        startup_script << str(cmd)
 
+    with open('{0}/exabgp/startup.sh'.format(CONFIG_DIR), 'w') as f:
+        f.write(str(startup_script))
+
+    local('chmod +x {0}/exabgp/startup.sh'.format(CONFIG_DIR))
+    local('docker exec {0} {1}/exabgp/startup.sh'.format(name, DOCKER_SHARED_DIR))
 
 def main():
     parser = ArgumentParser(description='BGP performance measuring tool')
@@ -220,22 +240,12 @@ def main():
     args = parser.parse_args()
 
     with settings(warn_only=True):
-        for path in glob.glob('{0}/*.pid'.format(CONFIG_DIR)):
-            with open(path, 'r') as f:
-                try:
-                    pid = f.readline().strip()
-                    print 'kill', pid
-                    os.kill(int(pid), signal.SIGKILL)
-                except:
-                    print 'failed'
-                    pass
-            os.remove(path)
-        for path in glob.glob('{0}/*.log'.format(CONFIG_DIR)):
-            os.remove(path)
         local('ip li del dev {0}'.format(BR_NAME))
+        local('rm -r {0}'.format(CONFIG_DIR))
+
     local('ip li add {0} type bridge'.format(BR_NAME))
     local('ip li set up dev {0}'.format(BR_NAME))
-    local('mkdir -p {0}'.format(CONFIG_DIR))
+    local('mkdir -p {0}/exabgp'.format(CONFIG_DIR))
 
     with open(args.file) as f:
         conf = yaml.load(f)
