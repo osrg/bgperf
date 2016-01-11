@@ -38,11 +38,14 @@ def main():
         },
     }
     conf['tester'] = {}
+    offset = 0
     for i in range(2, args.num_peer+2):
         router_id = '10.10.{0}.{1}'.format(i/255, i%255)
         paths = []
+        if (i+offset) % 254 + 1 == 224:
+            offset += 16
         for j in range(args.num_prefix):
-            paths.append('{0}.{1}.{2}.{3}/32'.format(i%254 + 1, i/254 + 1, j/255, j%255))
+            paths.append('{0}.{1}.{2}.{3}/32'.format((i+offset)%254 + 1, (i+offset)/254 + 1, j/255, j%255))
 
         conf['tester'][router_id] = {
             'as': 1000 + i,
