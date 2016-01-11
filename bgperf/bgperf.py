@@ -92,6 +92,7 @@ def run_gobgp(conf):
         def _start_gobgp():
             c = CmdBuffer()
             c << '#!/bin/bash'
+            c << "ulimit -n 65536"
             c << '/go/bin/gobgpd -f {0}/gobgpd.conf -l {1} > ' \
                  '{0}/gobgpd.log 2>&1'.format(DOCKER_SHARED_DIR, 'debug')
 
@@ -163,6 +164,7 @@ def run_bird(conf):
         def _start_bird():
             c = CmdBuffer()
             c << '#!/bin/bash'
+            c << "ulimit -n 65536"
             c << 'bird'
             cmd = 'echo "{0:s}" > {1}/start.sh'.format(c, CONFIG_DIR)
             local(cmd)
@@ -203,6 +205,7 @@ def run_tester(conf):
 
     startup_script = CmdBuffer('\n')
     startup_script << "#!/bin/sh"
+    startup_script << "ulimit -n 65536"
     for peer in conf['tester'].itervalues():
         startup_script << 'ip a add {0} dev eth1'.format(peer['local-address'])
         cmd = CmdBuffer()
