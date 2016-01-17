@@ -325,6 +325,7 @@ RUN ln -s /root/exabgp /exabgp
         for line in dckr.build(fileobj=f, rm=True, tag='bgperf', decode=True):
             print line['stream'].strip()
 
+    images = ['gobgp', 'bird', 'quagga']
     for image in ['osrg/{0}'.format(n) for n in images]:
         if not img_exists(image):
             print 'pulling', image
