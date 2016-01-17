@@ -35,6 +35,7 @@ optional arguments:
   -d DIR, --dir DIR
   -n NEIGHBOR_NUM, --neighbor-num NEIGHBOR_NUM
   -p PREFIX_NUM, --prefix-num PREFIX_NUM
+$ ./bgperf.py prepare
 $ ./bgperf.py doctor
 docker version ... ok (1.9.1)
 bgperf image ... ok
