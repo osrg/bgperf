@@ -402,6 +402,7 @@ def bench(args):
     if args.repeat:
         idle_limit = 20
     elapsed = 0
+    calm_limit = 1.0 + float(4*len(conf['tester']))/1000
 
     def mem(v):
         if v > 1000 * 1000 * 1000:
@@ -412,6 +413,8 @@ def bench(args):
             return '{0:.2f}KB'.format(float(v) / 1000)
         else:
             return '{0:.2f}B'.format(float(v))
+
+    print 'calm_limit: {0}%, idle_limit: {1}s'.format(calm_limit, idle_limit)
 
     for stat in dckr.stats(target['Id'], decode=True):
         cpu_percentage = 0.0
@@ -427,7 +430,7 @@ def bench(args):
         if elapsed > 0:
             rm_line()
         print 'elapsed: {0:>2}sec, cpu: {1:>4.2f}%, mem: {2}'.format(elapsed, cpu_percentage, mem(stat['memory_stats']['usage']))
-        if cpu_percentage < 1.0:
+        if cpu_percentage < calm_limit:
             idle_hold += 1
             if idle_hold == idle_limit:
                 print 'elapsed time: {0}sec'.format(elapsed - idle_limit)
