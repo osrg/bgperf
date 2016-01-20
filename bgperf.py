@@ -55,6 +55,12 @@ def connect_ctn_to_nw(ctn_name, nw_name):
 def rm_line():
     print '\x1b[1A\x1b[2K\x1b[1D\x1b[1A'
 
+
+def gc_thresh3():
+    gc_thresh3 = '/proc/sys/net/ipv4/neigh/default/gc_thresh3'
+    with open(gc_thresh3) as f:
+        return int(f.read().strip())
+
 def run_gobgp(args, conf):
     config = {'global': {
                 'config': {
@@ -310,6 +316,8 @@ def doctor(args):
         else:
             print '... not found. if you want to bench {0}, run `bgperf prepare`'.format(name)
 
+    print '/proc/sys/net/ipv4/neigh/default/gc_thresh3 ... {0}'.format(gc_thresh3())
+
 
 def prepare(args):
     dockerfile = '''
@@ -385,8 +393,13 @@ def bench(args):
     if ctn_exists(args.bench_name) and not args.repeat:
         dckr.remove_container(args.bench_name, force=True)
 
-    print 'run tester'
+    if len(conf['tester']) > gc_thresh3():
+        print 'gc_thresh3({0}) is lower than the number of peer({1})'.format(gc_thresh3(), len(conf['tester']))
+        print 'type next to increase the value'
+        print '$ echo 16384 | sudo tee /proc/sys/net/ipv4/neigh/default/gc_thresh3'
+
     if not ctn_exists(args.bench_name):
+        print 'run tester'
         run_tester(args, conf)
 
     print 'run', args.target
