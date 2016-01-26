@@ -6,7 +6,7 @@ bgperf is a performance measurement tool for BGP implementation.
 ## Prerequisites
 
 * Python 2.7 or later
-* Docker 1.9.0 or later
+* Docker
 
 ## How to install
 
@@ -51,7 +51,7 @@ By default, `bgperf` benchmarks [GoBGP](https://github.com/osrg/gobgp).
 `bgperf` boots 100 BGP test peers each advertises 100 routes to `GoBGP`.
 
 ```bash
-$ ./bgperf.py bench
+$ sudo ./bgperf.py bench
 run tester
 tester booting.. (100/100)
 run gobgp
@@ -64,13 +64,13 @@ Currently, `bgperf` supports [BIRD](http://bird.network.cz/) and [Quagga](http:/
 other than GoBGP.
 
 ```bash
-$ ./bgperf.py bench -t bird
+$ sudo ./bgperf.py bench -t bird
 run tester
 tester booting.. (100/100)
 run bird
 elapsed: 16sec, cpu: 0.00%, mem: 147.55MB
 elapsed time: 11sec
-$ ./bgperf.py bench -t quagga
+$ sudo ./bgperf.py bench -t quagga
 run tester
 tester booting.. (100/100)
 run quagga
@@ -83,7 +83,7 @@ To change a load, use `-n` and `-p` options.
 `-p` option specifies the number of prefix each peer advertise.
 
 ```bash
-$ ./bgperf.py -n 200 -p 50 bench
+$ sudo ./bgperf.py -n 200 -p 50 bench
 run tester
 tester booting.. (200/200)
 run gobgp

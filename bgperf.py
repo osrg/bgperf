@@ -25,6 +25,8 @@ from argparse import ArgumentParser, REMAINDER
 from itertools import chain
 from docker import Client
 from requests.exceptions import ConnectionError
+from pyroute2 import IPRoute
+from nsenter import Namespace
 
 
 class CmdBuffer(list):
@@ -47,9 +49,45 @@ def img_exists(name):
     return name in [ctn['RepoTags'][0].split(':')[0] for ctn in dckr.images()]
 
 
-def connect_ctn_to_nw(ctn_name, nw_name):
-    net_id = [n['Id'] for n in dckr.networks() if n['Name'] == nw_name][0]
-    return dckr.connect_container_to_network(container=ctn_name, net_id=net_id)
+class docker_netns(object):
+    def __init__(self, name):
+        pid = int(dckr.inspect_container(name)['State']['Pid'])
+        if pid == 0:
+            raise Exception('no container named {0}'.format(name))
+        self.pid = pid
+
+    def __enter__(self):
+        pid = self.pid
+        if not os.path.exists('/var/run/netns'):
+            os.mkdir('/var/run/netns')
+        os.symlink('/proc/{0}/ns/net'.format(pid), '/var/run/netns/{0}'.format(pid))
+        return str(pid)
+
+    def __exit__(self, type, value, traceback):
+        pid = self.pid
+        os.unlink('/var/run/netns/{0}'.format(pid))
+
+
+def connect_ctn_to_br(ctn, brname):
+    with docker_netns(ctn) as pid:
+        ip = IPRoute()
+        br = ip.link_lookup(ifname=brname)
+        if len(br) == 0:
+            ip.link_create(ifname=brname, kind='bridge')
+            br = ip.link_lookup(ifname=brname)
+        br = br[0]
+        ip.link('set', index=br, state='up')
+
+        ip.link_create(ifname=ctn, kind='veth', peer=pid)
+        host = ip.link_lookup(ifname=ctn)[0]
+        ip.link('set', index=host, master=br)
+        ip.link('set', index=host, state='up')
+        guest = ip.link_lookup(ifname=pid)[0]
+        ip.link('set', index=guest, net_ns_fd=pid)
+        with Namespace(pid, 'net'):
+            ip = IPRoute()
+            ip.link('set', index=guest, ifname='eth1')
+            ip.link('set', index=guest, state='up')
 
 
 def rm_line():
@@ -107,8 +145,7 @@ def run_gobgp(args, conf):
                                 volumes=[docker_dir], host_config=host_config)
 
     dckr.start(container=name)
-    net_id = [n['Id'] for n in dckr.networks() if n['Name'] == args.bench_name][0]
-    dckr.connect_container_to_network(container=name, net_id=net_id)
+    connect_ctn_to_br(name, args.bench_name+'-br')
 
     c = CmdBuffer()
     c << '#!/bin/bash'
@@ -174,8 +211,7 @@ def run_bird(args, conf):
                                 volumes=[docker_dir], host_config=host_config)
 
     dckr.start(container=name)
-    net_id = [n['Id'] for n in dckr.networks() if n['Name'] == args.bench_name][0]
-    dckr.connect_container_to_network(container=name, net_id=net_id)
+    connect_ctn_to_br(name, args.bench_name+'-br')
 
     c = CmdBuffer()
     c << '#!/bin/bash'
@@ -219,8 +255,7 @@ def run_quagga(args, conf):
     ctn = dckr.create_container(image=image, detach=True, name=name, stdin_open=True,
                                 volumes=[docker_dir], host_config=host_config)
     dckr.start(container=name)
-    net_id = [n['Id'] for n in dckr.networks() if n['Name'] == args.bench_name][0]
-    dckr.connect_container_to_network(container=name, net_id=net_id)
+    connect_ctn_to_br(name, args.bench_name+'-br')
 
     c = CmdBuffer()
     c << '#!/bin/bash'
@@ -246,7 +281,7 @@ def run_tester(args, conf):
     ctn = dckr.create_container(image=image, command='bash', detach=True, name=name,
                                 stdin_open=True, volumes=[docker_dir], host_config=host_config)
     dckr.start(container=name)
-    connect_ctn_to_nw(name, args.bench_name)
+    connect_ctn_to_br(name, args.bench_name+'-br')
 
     startup_script = CmdBuffer('\n')
     startup_script << "#!/bin/sh"
@@ -357,28 +392,26 @@ def update(args):
 def bench(args):
     config_dir = '{0}/{1}'.format(args.dir, args.bench_name)
 
-    get_nw = lambda : [n for n in dckr.networks() if n['Name'] == args.bench_name]
-    nws = get_nw()
+    ip = IPRoute()
+    brs = ip.link_lookup(ifname=args.bench_name+'-br')
+    if len(brs) > 0:
+        br = brs[0]
+        ctn_intfs = [l.get_attr('IFLA_IFNAME') for l in ip.get_links() if l.get_attr('IFLA_MASTER') == br]
+
     if not args.repeat:
-        if len(nws) > 0:
-            nw = nws[0]
-            for ctn in nw['Containers'].keys():
-                dckr.remove_container(ctn, force=True)
-            dckr.remove_network(nw['Id'])
+        # currently ctn name is same as ctn intf
+        # TODO support proper mapping between ctn name and intf name
+        for ctn in ctn_intfs:
+            print 'remove container:', ctn
+            dckr.remove_container(ctn, force=True)
 
         if os.path.exists(config_dir):
             shutil.rmtree(config_dir)
     else:
-        if len(nws) > 0:
-            nw = nws[0]
-            for k in nw['Containers'].keys():
-                name = [c['Names'] for c in dckr.containers() if c['Id'] == k][0][0][1:]
-                if name != 'bgperf':
-                    print 'remove container:', name
-                    dckr.remove_container(k, force=True)
-
-    if len(get_nw()) == 0:
-        dckr.create_network(name=args.bench_name)
+        for ctn in ctn_intfs:
+            if ctn != 'bgperf':
+                print 'remove container:', ctn
+                dckr.remove_container(ctn, force=True)
 
     if not os.path.exists(config_dir):
         os.makedirs('{0}/exabgp'.format(config_dir))
