@@ -15,8 +15,7 @@ $ git clone https://github.com/osrg/bgperf
 $ cd bgperf
 $ pip install -r pip-requirements.txt
 $ ./bgperf.py --help
-usage: bgperf.py [-h] [-b BENCH_NAME] [-d DIR] [-n NEIGHBOR_NUM]
-                 [-p PREFIX_NUM]
+usage: bgperf.py [-h] [-b BENCH_NAME] [-d DIR]
                  {doctor,prepare,update,bench,config} ...
 
 BGP performance measuring tool
@@ -33,8 +32,6 @@ optional arguments:
   -h, --help            show this help message and exit
   -b BENCH_NAME, --bench-name BENCH_NAME
   -d DIR, --dir DIR
-  -n NEIGHBOR_NUM, --neighbor-num NEIGHBOR_NUM
-  -p PREFIX_NUM, --prefix-num PREFIX_NUM
 $ ./bgperf.py prepare
 $ ./bgperf.py doctor
 docker version ... ok (1.9.1)
@@ -83,7 +80,7 @@ To change a load, use `-n` and `-p` options.
 `-p` option specifies the number of prefix each peer advertise.
 
 ```bash
-$ sudo ./bgperf.py -n 200 -p 50 bench
+$ sudo ./bgperf.py bench -n 200 -p 50
 run tester
 tester booting.. (200/200)
 run gobgp

@@ -523,8 +523,6 @@ if __name__ == '__main__':
     parser = ArgumentParser(description='BGP performance measuring tool')
     parser.add_argument('-b', '--bench-name', default='bgperf')
     parser.add_argument('-d', '--dir', default='/tmp')
-    parser.add_argument('-n', '--neighbor-num', default=100, type=int)
-    parser.add_argument('-p', '--prefix-num', default=100, type=int)
     s = parser.add_subparsers()
     parser_doctor = s.add_parser('doctor', help='check env')
     parser_doctor.set_defaults(func=doctor)
@@ -541,10 +539,14 @@ if __name__ == '__main__':
     parser_bench.add_argument('-i', '--image', help='specify custom docker image')
     parser_bench.add_argument('-r', '--repeat', action='store_true')
     parser_bench.add_argument('-f', '--file', metavar='CONFIG_FILE')
+    parser_bench.add_argument('-n', '--neighbor-num', default=100, type=int)
+    parser_bench.add_argument('-p', '--prefix-num', default=100, type=int)
     parser_bench.set_defaults(func=bench)
 
     parser_config = s.add_parser('config', help='generate config')
     parser_config.add_argument('-o', '--output', default='bgperf.yml', type=str)
+    parser_config.add_argument('-n', '--neighbor-num', default=100, type=int)
+    parser_config.add_argument('-p', '--prefix-num', default=100, type=int)
     parser_config.set_defaults(func=config)
 
     dckr = Client()
