@@ -27,9 +27,6 @@ from docker import Client
 from requests.exceptions import ConnectionError
 from pyroute2 import IPRoute
 from nsenter import Namespace
-from threading import Thread
-import pcapy
-from ryu.lib.packet import packet, bgp, ipv4, stream_parser
 
 
 class CmdBuffer(list):
@@ -71,22 +68,18 @@ class docker_netns(object):
         os.unlink('/var/run/netns/{0}'.format(pid))
 
 
-def mk_bridge(brname):
-    ip = IPRoute()
-    br = ip.link_lookup(ifname=brname)
-    if len(br) == 0:
-        ip.link_create(ifname=brname, kind='bridge')
-        br = ip.link_lookup(ifname=brname)
-    br = br[0]
-    ip.link('set', index=br, state='up')
-
-
 def connect_ctn_to_br(ctn, brname):
     with docker_netns(ctn) as pid:
         ip = IPRoute()
+        br = ip.link_lookup(ifname=brname)
+        if len(br) == 0:
+            ip.link_create(ifname=brname, kind='bridge')
+            br = ip.link_lookup(ifname=brname)
+        br = br[0]
+        ip.link('set', index=br, state='up')
+
         ip.link_create(ifname=ctn, kind='veth', peer=pid)
         host = ip.link_lookup(ifname=ctn)[0]
-        br = ip.link_lookup(ifname=brname)[0]
         ip.link('set', index=host, master=br)
         ip.link('set', index=host, state='up')
         guest = ip.link_lookup(ifname=pid)[0]
@@ -105,49 +98,6 @@ def gc_thresh3():
     gc_thresh3 = '/proc/sys/net/ipv4/neigh/default/gc_thresh3'
     with open(gc_thresh3) as f:
         return int(f.read().strip())
-
-
-class BGPDecoderThread(Thread):
-    def __init__(self, ifname):
-        Thread.__init__(self)
-        self.pcap = pcapy.open_live(ifname, 1514, 1, 1000)
-        self.pcap.setfilter('tcp port 179')
-        self.buf = {}
-        self.stats = {}
-
-    def run(self):
-        self.pcap.loop(0, self.packetHandler)
-
-    def packetHandler(self, hdr, data):
-        pkt = packet.Packet(data)
-        payload = pkt.protocols[-1]
-        if type(payload) == str:
-            ip = pkt.get_protocol(ipv4.ipv4)
-            key = (ip.src, ip.dst)
-            if key not in self.buf:
-                self.buf[key] = ""
-            self.buf[key] += payload
-
-            while True:
-                i = self.buf[key].find(16 * b'\xff')
-                if i < 0:
-                    return
-                elif i > 0:
-                    print 'something wrong:', key
-                    print ':'.join('{0:02x}'.format(ord(x)) for x in self.buf[key])
-                    sys.exit(1)
-                else:
-                    try:
-                        m, rest = bgp.BGPMessage.parser(self.buf[key])
-                        if m.type == bgp.BGP_MSG_UPDATE:
-                            if key not in self.stats:
-                                self.stats[key] = 0
-                            self.stats[key] += len(m.nlri)
-                            print 'BGP Update({0} -> {1}): {2}'.format(key[0], key[1], self.stats[key])
-                        self.buf[key] = rest
-                    except stream_parser.StreamParser.TooSmallException as e:
-                        return
-
 
 def run_gobgp(args, conf):
     config = {'global': {
@@ -480,12 +430,6 @@ def bench(args):
         print 'gc_thresh3({0}) is lower than the number of peer({1})'.format(gc_thresh3(), len(conf['tester']))
         print 'type next to increase the value'
         print '$ echo 16384 | sudo tee /proc/sys/net/ipv4/neigh/default/gc_thresh3'
-
-    mk_bridge(args.bench_name+'-br')
-
-    thread = BGPDecoderThread(args.bench_name+'-br')
-    thread.setDaemon(True)
-    thread.start()
 
     if not ctn_exists(args.bench_name):
         print 'run tester'
