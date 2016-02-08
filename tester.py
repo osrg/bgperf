@@ -31,8 +31,9 @@ class Tester(ExaBGP):
         startup = ['''#!/bin/bash
 ulimit -n 65536''']
 
-        for p in conf['tester'].itervalues():
-            startup.append('ip a add {0} dev eth1'.format(p['local-address']))
+        peers = conf['tester'].values()
+
+        for p in peers:
             with open('{0}/{1}.conf'.format(self.host_dir, p['router-id']), 'w') as f:
                 local_address = p['local-address'].split('/')[0]
                 config = '''neighbor {0} {{
@@ -52,6 +53,9 @@ ulimit -n 65536''']
 exabgp.daemon.daemonize=true \
 exabgp.daemon.user=root \
 exabgp {0}/{1}.conf'''.format(self.guest_dir, p['router-id']))
+
+        for p in peers:
+            startup.append('ip a add {0} dev eth1'.format(p['local-address']))
 
         filename = '{0}/start.sh'.format(self.host_dir)
         with open(filename, 'w') as f:
