@@ -18,77 +18,22 @@
 import os
 import sys
 import yaml
+import time
 import shutil
-import json
-import io
 from argparse import ArgumentParser, REMAINDER
 from itertools import chain
-from docker import Client
 from requests.exceptions import ConnectionError
 from pyroute2 import IPRoute
 from nsenter import Namespace
-
-
-class CmdBuffer(list):
-    def __init__(self, delim='\n'):
-        super(CmdBuffer, self).__init__()
-        self.delim = delim
-
-    def __lshift__(self, value):
-        self.append(value)
-
-    def __str__(self):
-        return self.delim.join(self)
-
-
-def ctn_exists(name):
-    return '/{0}'.format(name) in list(chain.from_iterable(n['Names'] for n in dckr.containers(all=True)))
-
-
-def img_exists(name):
-    return name in [ctn['RepoTags'][0].split(':')[0] for ctn in dckr.images()]
-
-
-class docker_netns(object):
-    def __init__(self, name):
-        pid = int(dckr.inspect_container(name)['State']['Pid'])
-        if pid == 0:
-            raise Exception('no container named {0}'.format(name))
-        self.pid = pid
-
-    def __enter__(self):
-        pid = self.pid
-        if not os.path.exists('/var/run/netns'):
-            os.mkdir('/var/run/netns')
-        os.symlink('/proc/{0}/ns/net'.format(pid), '/var/run/netns/{0}'.format(pid))
-        return str(pid)
-
-    def __exit__(self, type, value, traceback):
-        pid = self.pid
-        os.unlink('/var/run/netns/{0}'.format(pid))
-
-
-def connect_ctn_to_br(ctn, brname):
-    with docker_netns(ctn) as pid:
-        ip = IPRoute()
-        br = ip.link_lookup(ifname=brname)
-        if len(br) == 0:
-            ip.link_create(ifname=brname, kind='bridge')
-            br = ip.link_lookup(ifname=brname)
-        br = br[0]
-        ip.link('set', index=br, state='up')
-
-        ip.link_create(ifname=ctn, kind='veth', peer=pid)
-        host = ip.link_lookup(ifname=ctn)[0]
-        ip.link('set', index=host, master=br)
-        ip.link('set', index=host, state='up')
-        guest = ip.link_lookup(ifname=pid)[0]
-        ip.link('set', index=guest, net_ns_fd=pid)
-        with Namespace(pid, 'net'):
-            ip = IPRoute()
-            ip.link('set', index=guest, ifname='eth1')
-            ip.link('set', index=guest, state='up')
-
+from base import *
+from exabgp import ExaBGP
+from gobgp import GoBGP
+from bird import BIRD
+from quagga import Quagga
+from tester import Tester
+from monitor import Monitor
+from settings import dckr
+from Queue import Queue
 
 def rm_line():
     print '\x1b[1A\x1b[2K\x1b[1D\x1b[1A'
@@ -99,254 +44,21 @@ def gc_thresh3():
     with open(gc_thresh3) as f:
         return int(f.read().strip())
 
-def run_gobgp(args, conf):
-    config = {'global': {
-                'config': {
-                    'as': conf['target']['as'],
-                    'router-id': conf['target']['router-id']
-                },
-            }}
-    for peer in conf['tester'].itervalues():
-        n = {'config': {
-                'neighbor-address': peer['local-address'].split('/')[0],
-                'peer-as': peer['as']
-                },
-             'transport': {
-                'config': {
-                    'local-address': conf['target']['local-address'].split('/')[0],
-                },
-            },
-            'route-server': {
-                'config': {
-                    'route-server-client': True,
-                },
-            },
-        }
-        if 'neighbors' not in config:
-            config['neighbors'] = []
-        config['neighbors'].append(n)
-
-    config_dir = '{0}/{1}'.format(args.dir, args.bench_name)
-    with open('{0}/{1}'.format(config_dir, 'gobgpd.conf'), 'w') as f:
-        f.write(yaml.dump(config))
-
-    name = 'gobgp'
-    if ctn_exists(name):
-        print 'remove container:', name
-        dckr.remove_container(name, force=True)
-
-    docker_dir = '/root/config'
-    host_config = dckr.create_host_config(binds=['{0}:{1}'.format(config_dir, docker_dir)],
-                                          privileged=True)
-    image = 'osrg/gobgp'
-    if args.image:
-        image = args.image
-    ctn = dckr.create_container(image=image, detach=True, name=name, stdin_open=True,
-                                volumes=[docker_dir], host_config=host_config)
-
-    dckr.start(container=name)
-    connect_ctn_to_br(name, args.bench_name+'-br')
-
-    c = CmdBuffer()
-    c << '#!/bin/bash'
-    c << "ulimit -n 65536"
-    c << 'ip a add {0} dev eth1'.format(conf['target']['local-address'])
-    c << '/go/bin/gobgpd -t yaml -f {0}/gobgpd.conf -l {1} > ' \
-         '{0}/gobgpd.log 2>&1'.format(docker_dir, 'info')
-    with open('{0}/start.sh'.format(config_dir), 'w') as f:
-        f.write(str(c))
-    os.chmod('{0}/start.sh'.format(config_dir), 0777)
-    i = dckr.exec_create(container=name, cmd='{0}/start.sh'.format(docker_dir))
-    dckr.exec_inspect(i['Id'])
-    dckr.exec_start(i['Id'], detach=True)
-    return ctn
-
-
-def run_bird(args, conf):
-    c = CmdBuffer()
-    c << 'router id {0};'.format(conf['target']['router-id'])
-    c << 'listen bgp port 179;'
-    c << 'protocol device { }'
-    c << 'protocol direct {'
-    c << '  disabled;'
-    c << '}'
-    c << 'protocol kernel {'
-    c << '  disabled;'
-    c << '}'
-    c << 'table master;'
-    for peer in conf['tester'].itervalues():
-        c << 'table table_{0};'.format(peer['as'])
-        c << 'protocol pipe pipe_{0} {{'.format(peer['as'])
-        c << '  table master;'
-        c << '  mode transparent;'
-        c << '  peer table table_{0};'.format(peer['as'])
-        c << '  import all;'
-        c << '  export all;'
-        c << '}'
-        c << 'protocol bgp bgp_{0} {{'.format(peer['as'])
-        c << '  local as {0};'.format(conf['target']['as'])
-        n_addr = peer['local-address'].split('/')[0]
-        c << '  neighbor {0} as {1};'.format(n_addr, peer['as'])
-        c << '  import all;'
-        c << '  export all;'
-        c << '  rs client;'
-        c << '}'
-
-    config_dir = '{0}/{1}'.format(args.dir, args.bench_name)
-    with open('{0}/{1}'.format(config_dir, 'bird.conf'), 'w') as f:
-        f.write(str(c))
-
-    name = 'bird'
-    if ctn_exists(name):
-        print 'remove container:', name
-        dckr.remove_container(name, force=True)
-
-    docker_dir = '/etc/bird'
-    host_config = dckr.create_host_config(binds=['{0}:{1}'.format(config_dir, docker_dir)],
-                                          privileged=True)
-    image = 'osrg/bird'
-    if args.image:
-        image = args.image
-    ctn = dckr.create_container(image=image, detach=True, name=name, stdin_open=True,
-                                volumes=[docker_dir], host_config=host_config)
-
-    dckr.start(container=name)
-    connect_ctn_to_br(name, args.bench_name+'-br')
-
-    c = CmdBuffer()
-    c << '#!/bin/bash'
-    c << "ulimit -n 65536"
-    c << 'ip a add {0} dev eth1'.format(conf['target']['local-address'])
-    c << 'bird'
-    with open('{0}/start.sh'.format(config_dir), 'w') as f:
-        f.write(str(c))
-    os.chmod('{0}/start.sh'.format(config_dir), 0777)
-    i = dckr.exec_create(container=name, cmd='{0}/start.sh'.format(docker_dir))
-    dckr.exec_inspect(i['Id'])
-    dckr.exec_start(i['Id'], detach=True)
-    return ctn
-
-
-def run_quagga(args, conf):
-    c = CmdBuffer()
-    c << 'hostname bgpd'
-    c << 'password zebra'
-    c << 'router bgp {0}'.format(conf['target']['as'])
-    c << 'bgp router-id {0}'.format(conf['target']['router-id'])
-    for peer in conf['tester'].itervalues():
-        c << 'neighbor {0} remote-as {1}'.format(peer['local-address'].split('/')[0], peer['as'])
-        c << 'neighbor {0} route-server-client'.format(peer['local-address'].split('/')[0])
-
-    config_dir = '{0}/{1}'.format(args.dir, args.bench_name)
-    with open('{0}/{1}'.format(config_dir, 'bgpd.conf'), 'w') as f:
-        f.write(str(c))
-
-    name = 'quagga'
-    if ctn_exists(name):
-        print 'remove container:', name
-        dckr.remove_container(name, force=True)
-
-    docker_dir = '/etc/quagga'
-    host_config = dckr.create_host_config(binds=['{0}:{1}'.format(config_dir, docker_dir)],
-                                          privileged=True)
-    image = 'osrg/quagga'
-    if args.image:
-        image = args.image
-    ctn = dckr.create_container(image=image, detach=True, name=name, stdin_open=True,
-                                volumes=[docker_dir], host_config=host_config)
-    dckr.start(container=name)
-    connect_ctn_to_br(name, args.bench_name+'-br')
-
-    c = CmdBuffer()
-    c << '#!/bin/bash'
-    c << "ulimit -n 65536"
-    c << 'ip a add {0} dev eth1'.format(conf['target']['local-address'])
-    with open('{0}/start.sh'.format(config_dir), 'w') as f:
-        f.write(str(c))
-    os.chmod('{0}/start.sh'.format(config_dir), 0777)
-    i = dckr.exec_create(container=name, cmd='{0}/start.sh'.format(docker_dir))
-    dckr.exec_inspect(i['Id'])
-    dckr.exec_start(i['Id'], detach=True)
-
-    return ctn
-
-
-def run_tester(args, conf):
-    config_dir = '{0}/{1}'.format(args.dir, args.bench_name)
-    docker_dir = '/root/config'
-    host_config = dckr.create_host_config(binds=['{0}:{1}'.format(config_dir, docker_dir)],
-                                          privileged=True)
-    image = 'bgperf'
-    name = args.bench_name
-    ctn = dckr.create_container(image=image, command='bash', detach=True, name=name,
-                                stdin_open=True, volumes=[docker_dir], host_config=host_config)
-    dckr.start(container=name)
-    connect_ctn_to_br(name, args.bench_name+'-br')
-
-    startup_script = CmdBuffer('\n')
-    startup_script << "#!/bin/sh"
-    startup_script << "ulimit -n 65536"
-    for peer in conf['tester'].itervalues():
-        startup_script << 'ip a add {0} dev eth1'.format(peer['local-address'])
-        cmd = CmdBuffer()
-        cmd << 'neighbor {0} {{'.format(conf['target']['local-address'].split('/')[0])
-        cmd << '    router-id {0};'.format(peer['router-id'])
-        cmd << '    local-address {0};'.format(peer['local-address'].split('/')[0])
-        cmd << '    local-as {0};'.format(peer['as'])
-        cmd << '    peer-as {0};'.format(conf['target']['as'])
-        if len(peer['paths']) > 0:
-            cmd << '    static {'
-            for path in peer['paths']:
-                cmd << '        route {0} next-hop {1};'.format(path, peer['local-address'].split('/')[0])
-            cmd << '    }'
-        cmd << '}'
-
-        with open('{0}/exabgp/{1}.conf'.format(config_dir, peer['router-id']), 'w') as f:
-            f.write(str(cmd))
-
-        cmd = CmdBuffer(' ')
-        cmd << 'env exabgp.log.destination={0}/exabgp/{1}.log'.format(docker_dir, peer['router-id'])
-        cmd << 'exabgp.daemon.daemonize=true'
-        cmd << 'exabgp.daemon.user=root'
-        cmd << '/root/exabgp/sbin/exabgp {0}/exabgp/{1}.conf'.format(docker_dir, peer['router-id'])
-        startup_script << str(cmd)
-
-    with open('{0}/exabgp/startup.sh'.format(config_dir), 'w') as f:
-        f.write(str(startup_script))
-
-    os.chmod('{0}/exabgp/startup.sh'.format(config_dir), 0777)
-    i = dckr.exec_create(container=name, cmd='{0}/exabgp/startup.sh'.format(docker_dir))
-    cnt = 0
-    for lines in dckr.exec_start(i['Id'], stream=True):
-        for line in lines.strip().split('\n'):
-            cnt += 1
-            if cnt % 2 == 1:
-                if cnt > 1:
-                    rm_line()
-                print 'tester booting.. ({0}/{1})'.format(cnt/2 + 1, len(conf['tester']))
-
-    return ctn
-
 
 def doctor(args):
-    try:
-        dckr = Client()
-        ver = dckr.version()['Version']
-    except ConnectionError:
-        print "can't connect to docker daemon"
-        sys.exit(1)
+    ver = dckr.version()['Version']
     ok = int(''.join(ver.split('.'))) >= 190
     print 'docker version ... {1} ({0})'.format(ver, 'ok' if ok else 'update to 1.9.0 at least')
 
     print 'bgperf image',
-    if img_exists('bgperf'):
+    if img_exists('bgperf/exabgp'):
         print '... ok'
     else:
         print '... not found. run `bgperf prepare`'
 
     for name in ['gobgp', 'bird', 'quagga']:
         print '{0} image'.format(name),
-        if img_exists('osrg/{0}'.format(name)):
+        if img_exists('bgperf/{0}'.format(name)):
             print '... ok'
         else:
             print '... not found. if you want to bench {0}, run `bgperf prepare`'.format(name)
@@ -355,67 +67,38 @@ def doctor(args):
 
 
 def prepare(args):
-    dockerfile = '''
-FROM ubuntu:latest
-WORKDIR /root
-RUN apt-get install -qy git python
-RUN git clone https://github.com/Exa-Networks/exabgp
-RUN ln -s /root/exabgp /exabgp
-'''
-    f = io.BytesIO(dockerfile.encode('utf-8'))
-    if not img_exists('bgperf'):
-        print 'build tester container'
-        for line in dckr.build(fileobj=f, rm=True, tag='bgperf', decode=True):
-            print line['stream'].strip()
-
-    images = ['gobgp', 'bird', 'quagga']
-    for image in ['osrg/{0}'.format(n) for n in images]:
-        if not img_exists(image):
-            print 'pulling', image
-            for line in dckr.pull(image, stream=True):
-                print json.loads(line)['status'].strip()
+    ExaBGP.build_image(args.force)
+    GoBGP.build_image(args.force)
+    Quagga.build_image(args.force)
+    BIRD.build_image(args.force)
 
 
 def update(args):
-    if args.image == 'all':
-        images = ['gobgp', 'bird', 'quagga']
-    else:
-        images = [args.image]
-
-    for image in ['osrg/{0}'.format(n) for n in images]:
-
-        print 'pulling', image
-        for line in dckr.pull(image, stream=True):
-            print json.loads(line)['status'].strip()
+    ExaBGP.build_image(True)
+    GoBGP.build_image(True)
+    Quagga.build_image(True)
+    BIRD.build_image(True)
 
 
 def bench(args):
     config_dir = '{0}/{1}'.format(args.dir, args.bench_name)
+    brname = args.bench_name + '-br'
 
     ip = IPRoute()
-    brs = ip.link_lookup(ifname=args.bench_name+'-br')
-    if len(brs) > 0:
-        br = brs[0]
-        ctn_intfs = [l.get_attr('IFLA_IFNAME') for l in ip.get_links() if l.get_attr('IFLA_MASTER') == br]
+    ctn_intfs = flatten((l.get_attr('IFLA_IFNAME') for l in ip.get_links() if l.get_attr('IFLA_MASTER') == br) for br in ip.link_lookup(ifname=brname))
 
     if not args.repeat:
         # currently ctn name is same as ctn intf
         # TODO support proper mapping between ctn name and intf name
         for ctn in ctn_intfs:
-            print 'remove container:', ctn
             dckr.remove_container(ctn, force=True)
 
         if os.path.exists(config_dir):
             shutil.rmtree(config_dir)
     else:
         for ctn in ctn_intfs:
-            if ctn != 'bgperf':
-                print 'remove container:', ctn
+            if ctn != 'tester':
                 dckr.remove_container(ctn, force=True)
-
-    if not os.path.exists(config_dir):
-        os.makedirs('{0}/exabgp'.format(config_dir))
-        os.chmod('{0}/exabgp'.format(config_dir), 0777)
 
     if args.file:
         with open(args.file) as f:
@@ -423,25 +106,30 @@ def bench(args):
     else:
         conf = gen_conf(args.neighbor_num, args.prefix_num)
 
-    if ctn_exists(args.bench_name) and not args.repeat:
-        dckr.remove_container(args.bench_name, force=True)
-
     if len(conf['tester']) > gc_thresh3():
         print 'gc_thresh3({0}) is lower than the number of peer({1})'.format(gc_thresh3(), len(conf['tester']))
         print 'type next to increase the value'
         print '$ echo 16384 | sudo tee /proc/sys/net/ipv4/neigh/default/gc_thresh3'
 
-    if not ctn_exists(args.bench_name):
-        print 'run tester'
-        run_tester(args, conf)
-
     print 'run', args.target
     if args.target == 'gobgp':
-        target = run_gobgp(args, conf)
+        target = GoBGP
     elif args.target == 'bird':
-        target = run_bird(args, conf)
+        target = BIRD
     elif args.target == 'quagga':
-        target = run_quagga(args, conf)
+        target = Quagga
+    target = target(args.target, '{0}/{1}'.format(config_dir, args.target))
+    target = target.run(conf, brname)
+
+    print 'run monitor'
+    m = Monitor('monitor', config_dir+'/monitor')
+    m.run(conf, brname)
+
+    print 'waiting bgp connection between {0} and monitor'.format(args.target)
+    m.wait_established(conf['target']['local-address'].split('/')[0])
+
+    t = Tester('tester', config_dir+'/tester')
+    t.run(conf, brname)
 
     idle_hold = 0
     idle_limit = 5
@@ -493,9 +181,16 @@ def gen_conf(neighbor, prefix):
         'router-id': '10.10.0.1',
         'local-address': '10.10.0.1/16',
     }
+
+    conf['monitor'] = {
+        'as': 1001,
+        'router-id': '10.10.0.2',
+        'local-address': '10.10.0.2/16',
+    }
+
     conf['tester'] = {}
     offset = 0
-    for i in range(2, neighbor+2):
+    for i in range(3, neighbor+3):
         router_id = '10.10.{0}.{1}'.format(i/255, i%255)
         paths = []
         if (i+offset) % 254 + 1 == 224:
@@ -528,6 +223,7 @@ if __name__ == '__main__':
     parser_doctor.set_defaults(func=doctor)
 
     parser_prepare = s.add_parser('prepare', help='prepare env')
+    parser_prepare.add_argument('-f', '--force', default=False, type=bool)
     parser_prepare.set_defaults(func=prepare)
 
     parser_update = s.add_parser('update', help='pull bgp docker images')
@@ -549,7 +245,6 @@ if __name__ == '__main__':
     parser_config.add_argument('-p', '--prefix-num', default=100, type=int)
     parser_config.set_defaults(func=config)
 
-    dckr = Client()
 
     args = parser.parse_args()
     args.func(args)
