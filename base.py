@@ -94,7 +94,8 @@ class Container(object):
         if not img_exists(tag):
             print 'build {0}...'.format(tag)
             for line in dckr.build(fileobj=f, rm=True, tag=tag, decode=True):
-                print line['stream'].strip()
+                if 'stream' in line:
+                    print line['stream'].strip()
 
     def run(self, brname='', rm=True):
 
