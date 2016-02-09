@@ -21,6 +21,7 @@ import yaml
 import time
 import shutil
 import netaddr
+import datetime
 from argparse import ArgumentParser, REMAINDER
 from itertools import chain, islice
 from requests.exceptions import ConnectionError
@@ -128,7 +129,7 @@ def bench(args):
         target = target(args.target, '{0}/{1}'.format(config_dir, args.target), image=args.image)
     else:
         target = target(args.target, '{0}/{1}'.format(config_dir, args.target))
-    target = target.run(conf, brname)
+    target.run(conf, brname)
 
     print 'run monitor'
     m = Monitor('monitor', config_dir+'/monitor')
@@ -140,12 +141,12 @@ def bench(args):
     t = Tester('tester', config_dir+'/tester')
     t.run(conf, brname)
 
-    idle_hold = 0
-    idle_limit = 5
-    if args.repeat:
-        idle_limit = 20
-    elapsed = 0
-    calm_limit = 1.0 + float(4*len(conf['tester']))/1000
+    now = datetime.datetime.now()
+
+    q = Queue()
+
+    target.stats(q)
+    m.stats(q)
 
     def mem(v):
         if v > 1000 * 1000 * 1000:
@@ -157,31 +158,15 @@ def bench(args):
         else:
             return '{0:.2f}B'.format(float(v))
 
-    print 'calm_limit: {0}%, idle_limit: {1}s'.format(calm_limit, idle_limit)
+    while True:
+        info = q.get()
+        if info['who'] == target.name:
+            print 'elapsed: {0}sec, cpu: {1:>4.2f}%, mem: {2}'.format((datetime.datetime.now() - now).seconds, info['cpu'], mem(info['mem']))
 
-    for stat in dckr.stats(target['Id'], decode=True):
-        cpu_percentage = 0.0
-        prev_cpu = stat['precpu_stats']['cpu_usage']['total_usage']
-        prev_system = stat['precpu_stats']['system_cpu_usage']
-        cpu = stat['cpu_stats']['cpu_usage']['total_usage']
-        system = stat['cpu_stats']['system_cpu_usage']
-        cpu_num = len(stat['cpu_stats']['cpu_usage']['percpu_usage'])
-        cpu_delta = float(cpu) - float(prev_cpu)
-        system_delta = float(system) - float(prev_system)
-        if system_delta > 0.0 and cpu_delta > 0.0:
-            cpu_percentage = (cpu_delta / system_delta) * float(cpu_num) * 100.0
-        if elapsed > 0:
-            rm_line()
-        print 'elapsed: {0:>2}sec, cpu: {1:>4.2f}%, mem: {2}'.format(elapsed, cpu_percentage, mem(stat['memory_stats']['usage']))
-        if cpu_percentage < calm_limit:
-            idle_hold += 1
-            if idle_hold == idle_limit:
-                print 'elapsed time: {0}sec'.format(elapsed - idle_limit)
-                break
-        else:
-            idle_hold = 0
-        elapsed += 1
-
+        if info['who'] == m.name:
+            print 'elapsed: {0}sec, accepted: {1}'.format((datetime.datetime.now() - now).seconds, info['info']['accepted'] if 'accepted' in info['info'] else 0)
+            if info['checked']:
+                return
 
 def gen_conf(neighbor, prefix):
     conf = {}
@@ -195,6 +180,7 @@ def gen_conf(neighbor, prefix):
         'as': 1001,
         'router-id': '10.10.0.2',
         'local-address': '10.10.0.2/16',
+        'check-points': [prefix * neighbor],
     }
 
     conf['tester'] = {}

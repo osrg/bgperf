@@ -19,6 +19,7 @@ from  settings import dckr
 import yaml
 import json
 from threading import Thread
+import time
 
 class Monitor(GoBGP):
     def __init__(self, name, host_dir):
@@ -69,3 +70,21 @@ gobgpd -t yaml -f {1}/{2} -l {3} > {1}/gobgpd.log 2>&1
                 buf = ''
             else:
                 buf += line
+
+    def stats(self, queue):
+        def stats():
+            cps = self.config['monitor']['check-points'] if 'check-points' in self.config['monitor'] else []
+            while True:
+                info = json.loads(self.local('gobgp neighbor -j'))[0]
+                info['who'] = self.name
+                if 'info' in info and 'accepted' in info['info'] and len(cps) > 0 and int(cps[0]) == int(info['info']['accepted']):
+                    cps.pop(0)
+                    info['checked'] = True
+                else:
+                    info['checked'] = False
+                queue.put(info)
+                time.sleep(1)
+
+        t = Thread(target=stats)
+        t.daemon = True
+        t.start()

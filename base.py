@@ -20,6 +20,7 @@ import yaml
 from pyroute2 import IPRoute
 from itertools import chain
 from nsenter import Namespace
+from threading import Thread
 
 flatten = lambda l: chain.from_iterable(l)
 
@@ -110,5 +111,25 @@ class Container(object):
         dckr.start(container=self.name)
         if brname != '':
             connect_ctn_to_br(self.name, brname)
+        self.ctn_id = ctn['Id']
 
         return ctn
+
+    def stats(self, queue):
+        def stats():
+            for stat in dckr.stats(self.ctn_id, decode=True):
+                cpu_percentage = 0.0
+                prev_cpu = stat['precpu_stats']['cpu_usage']['total_usage']
+                prev_system = stat['precpu_stats']['system_cpu_usage']
+                cpu = stat['cpu_stats']['cpu_usage']['total_usage']
+                system = stat['cpu_stats']['system_cpu_usage']
+                cpu_num = len(stat['cpu_stats']['cpu_usage']['percpu_usage'])
+                cpu_delta = float(cpu) - float(prev_cpu)
+                system_delta = float(system) - float(prev_system)
+                if system_delta > 0.0 and cpu_delta > 0.0:
+                    cpu_percentage = (cpu_delta / system_delta) * float(cpu_num) * 100.0
+                queue.put({'who': self.name, 'cpu': cpu_percentage, 'mem': stat['memory_stats']['usage']})
+
+        t = Thread(target=stats)
+        t.daemon = True
+        t.start()
