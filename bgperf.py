@@ -141,14 +141,14 @@ def bench(args):
     t = Tester('tester', config_dir+'/tester')
     t.run(conf, brname)
 
-    now = datetime.datetime.now()
+    start = datetime.datetime.now()
 
     q = Queue()
 
     target.stats(q)
     m.stats(q)
 
-    def mem(v):
+    def mem_human(v):
         if v > 1000 * 1000 * 1000:
             return '{0:.2f}GB'.format(float(v) / (1000 * 1000 * 1000))
         elif v > 1000 * 1000:
@@ -158,14 +158,26 @@ def bench(args):
         else:
             return '{0:.2f}B'.format(float(v))
 
+    f = open(args.output, 'w') if args.output else None
+    cpu = 0
+    mem = 0
     while True:
         info = q.get()
+
         if info['who'] == target.name:
-            print 'elapsed: {0}sec, cpu: {1:>4.2f}%, mem: {2}'.format((datetime.datetime.now() - now).seconds, info['cpu'], mem(info['mem']))
+            cpu = info['cpu']
+            mem = info['mem']
 
         if info['who'] == m.name:
-            print 'elapsed: {0}sec, accepted: {1}'.format((datetime.datetime.now() - now).seconds, info['info']['accepted'] if 'accepted' in info['info'] else 0)
+            now = datetime.datetime.now()
+            elapsed = now - start
+            recved = info['info']['accepted'] if 'accepted' in info['info'] else 0
+            print 'elapsed: {0}sec, cpu: {1:>4.2f}%, mem: {2}, recved: {3}'.format(elapsed.seconds, cpu, mem_human(mem), recved)
+            f.write('{0}, {1}, {2}, {3}\n'.format(elapsed.seconds, cpu, mem, recved)) if f else None
+            f.flush()
+
             if info['checked']:
+                f.close() if f else None
                 return
 
 def gen_conf(neighbor, prefix):
@@ -229,6 +241,7 @@ if __name__ == '__main__':
     parser_bench.add_argument('-f', '--file', metavar='CONFIG_FILE')
     parser_bench.add_argument('-n', '--neighbor-num', default=100, type=int)
     parser_bench.add_argument('-p', '--prefix-num', default=100, type=int)
+    parser_bench.add_argument('-o', '--output', metavar='STAT_FILE')
     parser_bench.set_defaults(func=bench)
 
     parser_config = s.add_parser('config', help='generate config')
