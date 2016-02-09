@@ -20,8 +20,9 @@ import sys
 import yaml
 import time
 import shutil
+import netaddr
 from argparse import ArgumentParser, REMAINDER
-from itertools import chain
+from itertools import chain, islice
 from requests.exceptions import ConnectionError
 from pyroute2 import IPRoute
 from nsenter import Namespace
@@ -198,19 +199,15 @@ def gen_conf(neighbor, prefix):
 
     conf['tester'] = {}
     offset = 0
+
+    it = netaddr.iter_iprange('100.0.0.0','160.0.0.0')
     for i in range(3, neighbor+3):
         router_id = '10.10.{0}.{1}'.format(i/255, i%255)
-        paths = []
-        if (i+offset) % 254 + 1 == 224:
-            offset += 16
-        for j in range(prefix):
-            paths.append('{0}.{1}.{2}.{3}/32'.format((i+offset)%254 + 1, (i+offset)/254 + 1, j/255, j%255))
-
         conf['tester'][router_id] = {
             'as': 1000 + i,
             'router-id': router_id,
             'local-address': router_id + '/16',
-            'paths': paths,
+            'paths': islice(it, prefix),
         }
     return conf
 
