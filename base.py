@@ -91,7 +91,7 @@ class Container(object):
     @classmethod
     def build_image(cls, force, tag):
         f = io.BytesIO(cls.dockerfile.encode('utf-8'))
-        if not img_exists(tag):
+        if force or not img_exists(tag):
             print 'build {0}...'.format(tag)
             for line in dckr.build(fileobj=f, rm=True, tag=tag, decode=True):
                 if 'stream' in line:

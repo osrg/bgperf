@@ -74,10 +74,14 @@ def prepare(args):
 
 
 def update(args):
-    ExaBGP.build_image(True)
-    GoBGP.build_image(True)
-    Quagga.build_image(True)
-    BIRD.build_image(True)
+    if args.image == 'all' or args.image == 'exabgp':
+        ExaBGP.build_image(True, checkout=args.checkout)
+    if args.image == 'all' or args.image == 'gobgp':
+        GoBGP.build_image(True, checkout=args.checkout)
+    if args.image == 'all' or args.image == 'quagga':
+        Quagga.build_image(True, checkout=args.checkout)
+    if args.image == 'all' or args.image == 'bird':
+        BIRD.build_image(True, checkout=args.checkout)
 
 
 def bench(args):
@@ -118,7 +122,11 @@ def bench(args):
         target = BIRD
     elif args.target == 'quagga':
         target = Quagga
-    target = target(args.target, '{0}/{1}'.format(config_dir, args.target))
+
+    if args.image:
+        target = target(args.target, '{0}/{1}'.format(config_dir, args.target), image=args.image)
+    else:
+        target = target(args.target, '{0}/{1}'.format(config_dir, args.target))
     target = target.run(conf, brname)
 
     print 'run monitor'
@@ -227,7 +235,8 @@ if __name__ == '__main__':
     parser_prepare.set_defaults(func=prepare)
 
     parser_update = s.add_parser('update', help='pull bgp docker images')
-    parser_update.add_argument('image', choices=['gobgp', 'bird', 'quagga', 'all'])
+    parser_update.add_argument('image', choices=['exabgp', 'gobgp', 'bird', 'quagga', 'all'])
+    parser_update.add_argument('-c', '--checkout', default='HEAD')
     parser_update.set_defaults(func=update)
 
     parser_bench = s.add_parser('bench', help='run benchmarks')

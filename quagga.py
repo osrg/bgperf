@@ -20,7 +20,7 @@ class Quagga(Container):
         super(Quagga, self).__init__(name, image, host_dir, guest_dir)
 
     @classmethod
-    def build_image(cls, force=False, tag='bgperf/quagga'):
+    def build_image(cls, force=False, tag='bgperf/quagga', checkout='HEAD'):
         cls.dockerfile = '''
 FROM ubuntu:latest
 WORKDIR /root
@@ -29,10 +29,10 @@ RUN mkdir /var/log/quagga && chown quagga:quagga /var/log/quagga
 RUN mkdir /var/run/quagga && chown quagga:quagga /var/run/quagga
 RUN apt-get update && apt-get install -qy git autoconf libtool gawk make telnet libreadline6-dev
 RUN git clone git://git.sv.gnu.org/quagga.git quagga && \
-(cd quagga && ./bootstrap.sh && \
+(cd quagga && git checkout {0} && ./bootstrap.sh && \
 ./configure --disable-doc --localstatedir=/var/run/quagga && make && make install)
 RUN ldconfig
-'''
+'''.format(checkout)
         super(Quagga, cls).build_image(force, tag)
 
     def write_config(self, conf, name='bgpd.conf'):

@@ -20,7 +20,7 @@ class BIRD(Container):
         super(BIRD, self).__init__(name, image, host_dir, guest_dir)
 
     @classmethod
-    def build_image(cls, force=False, tag='bgperf/bird'):
+    def build_image(cls, force=False, tag='bgperf/bird', checkout='HEAD'):
         cls.dockerfile = '''
 FROM ubuntu:latest
 WORKDIR /root
@@ -28,8 +28,8 @@ RUN apt-get update && apt-get install -qy git autoconf libtool gawk make \
 flex bison libncurses-dev libreadline6-dev
 RUN apt-get install -qy flex
 RUN git clone https://gitlab.labs.nic.cz/labs/bird.git bird && \
-(cd bird && autoconf && ./configure && make && make install)
-'''
+(cd bird && git checkout {0} && autoconf && ./configure && make && make install)
+'''.format(checkout)
         super(BIRD, cls).build_image(force, tag)
 
 
