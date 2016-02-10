@@ -44,6 +44,7 @@ bgp router-id {1}
 
         def gen_neighbor_config(n):
             return """neighbor {0} remote-as {1}
+neighbor {0} advertisement-interval 1
 neighbor {0} route-server-client
 """.format(n['local-address'].split('/')[0], n['as'])
 
