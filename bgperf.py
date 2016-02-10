@@ -176,7 +176,7 @@ def bench(args):
                 rm_line()
             print 'elapsed: {0}sec, cpu: {1:>4.2f}%, mem: {2}, recved: {3}'.format(elapsed.seconds, cpu, mem_human(mem), recved)
             f.write('{0}, {1}, {2}, {3}\n'.format(elapsed.seconds, cpu, mem, recved)) if f else None
-            f.flush()
+            f.flush() if f else None
 
             if info['checked']:
                 f.close() if f else None
