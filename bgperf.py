@@ -117,7 +117,6 @@ def bench(args):
         print 'type next to increase the value'
         print '$ echo 16384 | sudo tee /proc/sys/net/ipv4/neigh/default/gc_thresh3'
 
-    print 'run', args.target
     if args.target == 'gobgp':
         target = GoBGP
     elif args.target == 'bird':
@@ -125,11 +124,15 @@ def bench(args):
     elif args.target == 'quagga':
         target = Quagga
 
-    if args.image:
-        target = target(args.target, '{0}/{1}'.format(config_dir, args.target), image=args.image)
-    else:
-        target = target(args.target, '{0}/{1}'.format(config_dir, args.target))
-    target.run(conf, brname)
+    is_remote = True if 'remote' in conf['target'] and conf['target']['remote'] else False
+
+    if not is_remote:
+        print 'run', args.target
+        if args.image:
+            target = target(args.target, '{0}/{1}'.format(config_dir, args.target), image=args.image)
+        else:
+            target = target(args.target, '{0}/{1}'.format(config_dir, args.target))
+        target.run(conf, brname)
 
     print 'run monitor'
     m = Monitor('monitor', config_dir+'/monitor')
@@ -147,8 +150,9 @@ def bench(args):
 
     q = Queue()
 
-    target.stats(q)
     m.stats(q)
+    if not is_remote:
+        target.stats(q)
 
     def mem_human(v):
         if v > 1000 * 1000 * 1000:
