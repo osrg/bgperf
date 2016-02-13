@@ -112,6 +112,10 @@ def bench(args):
             conf = yaml.load(f)
     else:
         conf = gen_conf(args.neighbor_num, args.prefix_num)
+        if not os.path.exists(config_dir):
+            os.makedirs(config_dir)
+        with open('{0}/scenario.yaml'.format(config_dir), 'w') as f:
+            f.write(yaml.dump(conf))
 
     if len(conf['tester']) > gc_thresh3():
         print 'gc_thresh3({0}) is lower than the number of peer({1})'.format(gc_thresh3(), len(conf['tester']))
