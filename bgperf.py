@@ -207,7 +207,7 @@ def gen_conf(neighbor, prefix):
             'as': 1000 + i,
             'router-id': router_id,
             'local-address': router_id + '/16',
-            'paths': islice(it, prefix),
+            'paths': list('{0}/32'.format(ip) for ip in islice(it, prefix)),
         }
     return conf
 
