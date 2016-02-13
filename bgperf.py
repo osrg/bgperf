@@ -26,6 +26,7 @@ from argparse import ArgumentParser, REMAINDER
 from itertools import chain, islice
 from requests.exceptions import ConnectionError
 from pyroute2 import IPRoute
+from socket import AF_INET
 from nsenter import Namespace
 from base import *
 from exabgp import ExaBGP
@@ -97,14 +98,14 @@ def bench(args):
         # currently ctn name is same as ctn intf
         # TODO support proper mapping between ctn name and intf name
         for ctn in ctn_intfs:
-            dckr.remove_container(ctn, force=True)
+            dckr.remove_container(ctn, force=True) if ctn_exists(ctn) else None
 
         if os.path.exists(config_dir):
             shutil.rmtree(config_dir)
     else:
         for ctn in ctn_intfs:
             if ctn != 'tester':
-                dckr.remove_container(ctn, force=True)
+                dckr.remove_container(ctn, force=True) if ctn_exists(ctn) else None
 
     if args.file:
         with open(args.file) as f:
@@ -126,7 +127,23 @@ def bench(args):
 
     is_remote = True if 'remote' in conf['target'] and conf['target']['remote'] else False
 
-    if not is_remote:
+    if is_remote:
+        r = ip.get_routes(dst=conf['target']['local-address'].split('/')[0], family=AF_INET)
+        if len(r) == 0:
+            print 'no route to remote target {0}'.format(conf['target']['local-address'])
+            sys.exit(1)
+
+        idx = [t[1] for t in r[0]['attrs'] if t[0] == 'RTA_OIF'][0]
+        intf = ip.get_links(idx)[0]
+
+        if intf.get_attr('IFLA_MASTER') not in ip.link_lookup(ifname=brname):
+            br = ip.link_lookup(ifname=brname)
+            if len(br) == 0:
+                ip.link_create(ifname=brname, kind='bridge')
+                br = ip.link_lookup(ifname=brname)
+            br = br[0]
+            ip.link('set', index=idx, master=br)
+    else:
         print 'run', args.target
         if args.image:
             target = target(args.target, '{0}/{1}'.format(config_dir, args.target), image=args.image)
@@ -170,7 +187,7 @@ def bench(args):
     while True:
         info = q.get()
 
-        if info['who'] == target.name:
+        if not is_remote and info['who'] == target.name:
             cpu = info['cpu']
             mem = info['mem']
 
