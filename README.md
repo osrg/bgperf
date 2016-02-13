@@ -3,12 +3,17 @@ bgperf
 
 bgperf is a performance measurement tool for BGP implementation.
 
+* [How to install](#how_to_install)
+* [How to use](#how_to_use)
+* [How bgperf works](https://github.com/osrg/bgperf/blob/master/docs/how_bgperf_works.md)
+* [Benchmark remote target](https://github.com/osrg/bgperf/blob/master/docs/benchmark_remote_target.md)
+
 ## Prerequisites
 
 * Python 2.7 or later
 * Docker
 
-## How to install
+##  <a name="how_to_install">How to install
 
 ```bash
 $ git clone https://github.com/osrg/bgperf
@@ -41,7 +46,7 @@ bird image ... ok
 quagga image ... ok
 ```
 
-## How to use
+## <a name="how_to_use">How to use
 
 Use `bench` command to start benchmark test.
 By default, `bgperf` benchmarks [GoBGP](https://github.com/osrg/gobgp).
