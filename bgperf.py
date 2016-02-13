@@ -138,8 +138,10 @@ def bench(args):
     print 'waiting bgp connection between {0} and monitor'.format(args.target)
     m.wait_established(conf['target']['local-address'].split('/')[0])
 
-    t = Tester('tester', config_dir+'/tester')
-    t.run(conf, brname)
+    if not args.repeat:
+        print 'run tester'
+        t = Tester('tester', config_dir+'/tester')
+        t.run(conf, brname)
 
     start = datetime.datetime.now()
 
@@ -239,7 +241,7 @@ if __name__ == '__main__':
     parser_bench = s.add_parser('bench', help='run benchmarks')
     parser_bench.add_argument('-t', '--target', choices=['gobgp', 'bird', 'quagga'], default='gobgp')
     parser_bench.add_argument('-i', '--image', help='specify custom docker image')
-    parser_bench.add_argument('-r', '--repeat', action='store_true')
+    parser_bench.add_argument('-r', '--repeat', action='store_true', help='use existing tester/monitor container')
     parser_bench.add_argument('-f', '--file', metavar='CONFIG_FILE')
     parser_bench.add_argument('-n', '--neighbor-num', default=100, type=int)
     parser_bench.add_argument('-p', '--prefix-num', default=100, type=int)
