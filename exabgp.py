@@ -20,7 +20,7 @@ class ExaBGP(Container):
         super(ExaBGP, self).__init__(name, image, host_dir, guest_dir)
 
     @classmethod
-    def build_image(cls, force=False, tag='bgperf/exabgp', checkout='HEAD'):
+    def build_image(cls, force=False, tag='bgperf/exabgp', checkout='HEAD', nocache=False):
         cls.dockerfile = '''
 FROM ubuntu:latest
 WORKDIR /root
@@ -30,7 +30,7 @@ RUN git clone https://github.com/Exa-Networks/exabgp && \
 (cd exabgp && git checkout {0} && pip install -r requirements.txt && python setup.py install)
 RUN ln -s /root/exabgp /exabgp
 '''.format(checkout)
-        super(ExaBGP, cls).build_image(force, tag)
+        super(ExaBGP, cls).build_image(force, tag, nocache)
 
     def run(self, brname=''):
         return super(ExaBGP, self).run(brname)

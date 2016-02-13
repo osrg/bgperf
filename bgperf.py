@@ -70,21 +70,21 @@ def doctor(args):
 
 
 def prepare(args):
-    ExaBGP.build_image(args.force)
-    GoBGP.build_image(args.force)
-    Quagga.build_image(args.force)
-    BIRD.build_image(args.force)
+    ExaBGP.build_image(args.force, nocache=args.no_cache)
+    GoBGP.build_image(args.force, nocache=args.no_cache)
+    Quagga.build_image(args.force, nocache=args.no_cache)
+    BIRD.build_image(args.force, nocache=args.no_cache)
 
 
 def update(args):
     if args.image == 'all' or args.image == 'exabgp':
-        ExaBGP.build_image(True, checkout=args.checkout)
+        ExaBGP.build_image(True, checkout=args.checkout, nocache=args.no_cache)
     if args.image == 'all' or args.image == 'gobgp':
-        GoBGP.build_image(True, checkout=args.checkout)
+        GoBGP.build_image(True, checkout=args.checkout, nocache=args.no_cache)
     if args.image == 'all' or args.image == 'quagga':
-        Quagga.build_image(True, checkout=args.checkout)
+        Quagga.build_image(True, checkout=args.checkout, nocache=args.no_cache)
     if args.image == 'all' or args.image == 'bird':
-        BIRD.build_image(True, checkout=args.checkout)
+        BIRD.build_image(True, checkout=args.checkout, nocache=args.no_cache)
 
 
 def bench(args):
@@ -251,12 +251,14 @@ if __name__ == '__main__':
     parser_doctor.set_defaults(func=doctor)
 
     parser_prepare = s.add_parser('prepare', help='prepare env')
-    parser_prepare.add_argument('-f', '--force', default=False, type=bool)
+    parser_prepare.add_argument('-f', '--force', action='store_true', help='build even if the container already exists')
+    parser_prepare.add_argument('-n', '--no-cache', action='store_true')
     parser_prepare.set_defaults(func=prepare)
 
-    parser_update = s.add_parser('update', help='pull bgp docker images')
+    parser_update = s.add_parser('update', help='rebuild bgp docker images')
     parser_update.add_argument('image', choices=['exabgp', 'gobgp', 'bird', 'quagga', 'all'])
     parser_update.add_argument('-c', '--checkout', default='HEAD')
+    parser_update.add_argument('-n', '--no-cache', action='store_true')
     parser_update.set_defaults(func=update)
 
     parser_bench = s.add_parser('bench', help='run benchmarks')

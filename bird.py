@@ -20,7 +20,7 @@ class BIRD(Container):
         super(BIRD, self).__init__(name, image, host_dir, guest_dir)
 
     @classmethod
-    def build_image(cls, force=False, tag='bgperf/bird', checkout='HEAD'):
+    def build_image(cls, force=False, tag='bgperf/bird', checkout='HEAD', nocache=False):
         cls.dockerfile = '''
 FROM ubuntu:latest
 WORKDIR /root
@@ -30,7 +30,7 @@ RUN apt-get install -qy flex
 RUN git clone https://gitlab.labs.nic.cz/labs/bird.git bird && \
 (cd bird && git checkout {0} && autoconf && ./configure && make && make install)
 '''.format(checkout)
-        super(BIRD, cls).build_image(force, tag)
+        super(BIRD, cls).build_image(force, tag, nocache)
 
 
     def write_config(self, conf, name='bird.conf'):
