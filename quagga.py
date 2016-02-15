@@ -46,6 +46,7 @@ bgp router-id {1}
             return """neighbor {0} remote-as {1}
 neighbor {0} advertisement-interval 1
 neighbor {0} route-server-client
+neighbor {0} timers 30 90
 """.format(n['local-address'].split('/')[0], n['as'])
 
         with open('{0}/{1}'.format(self.host_dir, name), 'w') as f:
