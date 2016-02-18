@@ -159,6 +159,8 @@ def bench(args):
     m = Monitor('monitor', config_dir+'/monitor')
     m.run(conf, brname)
 
+    time.sleep(1)
+
     print 'waiting bgp connection between {0} and monitor'.format(args.target)
     m.wait_established(conf['target']['local-address'].split('/')[0])
 
