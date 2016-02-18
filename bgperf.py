@@ -190,6 +190,7 @@ def bench(args):
     f = open(args.output, 'w') if args.output else None
     cpu = 0
     mem = 0
+    cooling = -1
     while True:
         info = q.get()
 
@@ -207,9 +208,15 @@ def bench(args):
             f.write('{0}, {1}, {2}, {3}\n'.format(elapsed.seconds, cpu, mem, recved)) if f else None
             f.flush() if f else None
 
-            if info['checked']:
+            if cooling == 5:
                 f.close() if f else None
                 return
+
+            if cooling >= 0:
+                cooling += 1
+
+            if info['checked']:
+                cooling = 0
 
 def gen_conf(neighbor, prefix, filter):
     conf = {}
