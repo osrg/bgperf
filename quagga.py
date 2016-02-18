@@ -43,16 +43,40 @@ bgp router-id {1}
 """.format(conf['target']['as'], conf['target']['router-id'])
 
         def gen_neighbor_config(n):
-            return """neighbor {0} remote-as {1}
+            local_addr = n['local-address'].split('/')[0]
+            c = """neighbor {0} remote-as {1}
 neighbor {0} advertisement-interval 1
 neighbor {0} route-server-client
 neighbor {0} timers 30 90
-""".format(n['local-address'].split('/')[0], n['as'])
+""".format(local_addr, n['as'])
+            if 'filter' in n:
+                for p in (n['filter']['in'] if 'in' in n['filter'] else []):
+                    c += 'neighbor {0} route-map {1} export\n'.format(local_addr, p)
+            return c
 
         with open('{0}/{1}'.format(self.host_dir, name), 'w') as f:
             f.write(config)
             for n in conf['tester'].values() + [conf['monitor']]:
                 f.write(gen_neighbor_config(n))
+
+            if 'policy' in conf:
+                seq = 10
+                for k, v in conf['policy'].iteritems():
+                    match_info = []
+                    for i, match in enumerate(v['match']):
+                        n = '{0}_match_{1}'.format(k, i)
+                        if match['type'] == 'prefix':
+                            f.write(''.join('ip prefix-list {0} deny {1}\n'.format(n, p) for p in match['value']))
+                            f.write('ip prefix-list {0} permit any\n'.format(n))
+                        match_info.append((match['type'], n))
+
+                    f.write('route-map {0} permit {1}\n'.format(k, seq))
+                    for info in match_info:
+                        if info[0] == 'prefix':
+                            f.write('match ip address prefix-list {0}\n'.format(info[1]))
+
+                    seq += 10
+
         self.config_name = name
 
     def run(self, conf, brname=''):

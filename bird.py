@@ -41,14 +41,33 @@ protocol direct {{ disabled; }}
 protocol kernel {{ disabled; }}
 table master;
 '''.format(conf['target']['router-id'])
+
+        def gen_filter_assignment(n):
+            if 'filter' in n:
+                c = []
+                if 'in' not in n['filter']:
+                    c.append('import all;')
+                else:
+                    for p in n['filter']['in']:
+                        c.append('import where {0}();'.format(p))
+
+                if 'out' not in n['filter']:
+                    c.append('export all;')
+                else:
+                    for p in n['filter']['out']:
+                        c.append('export where {0}();'.format(p))
+                return '\n'.join(c)
+            return '''import all;
+export all;
+'''
+
         def gen_neighbor_config(n):
             return '''table table_{0};
 protocol pipe pipe_{0} {{
     table master;
     mode transparent;
     peer table table_{0};
-    import all;
-    export all;
+{3}
 }}
 protocol bgp bgp_{0} {{
     local as {1};
@@ -58,12 +77,44 @@ protocol bgp bgp_{0} {{
     export all;
     rs client;
 }}
-'''.format(n['as'], conf['target']['as'], n['local-address'].split('/')[0])
+'''.format(n['as'], conf['target']['as'], n['local-address'].split('/')[0], gen_filter_assignment(n))
+
+        def gen_prefix_filter(name, match):
+            return '''function {0}()
+prefix set prefixes;
+{{
+prefixes = [
+{1}
+];
+if net ~ prefixes then return false;
+return true;
+}}
+'''.format(name, ',\n'.join(match['value']))
+
+        def gen_filter(name, match):
+            c = ['function {0}()'.format(name), '{']
+            for typ, name in match:
+                c.append(' if ! {0}() then return false;'.format(name))
+            c.append('return true;')
+            c.append('}')
+            return '\n'.join(c) + '\n'
 
         with open('{0}/{1}'.format(self.host_dir, name), 'w') as f:
             f.write(config)
+
+            if 'policy' in conf:
+                for k, v in conf['policy'].iteritems():
+                    match_info = []
+                    for i, match in enumerate(v['match']):
+                        n = '{0}_match_{1}'.format(k, i)
+                        if match['type'] == 'prefix':
+                            f.write(gen_prefix_filter(n, match))
+                        match_info.append((match['type'], n))
+                    f.write(gen_filter(k, match_info))
+
             for n in conf['tester'].values() + [conf['monitor']]:
                 f.write(gen_neighbor_config(n))
+            f.flush()
         self.config_name = name
 
 
@@ -76,7 +127,7 @@ protocol bgp bgp_{0} {{
         startup = '''#!/bin/bash
 ulimit -n 65536
 ip a add {0} dev eth1
-bird -c {1}/{2}
+bird -c {1}/{2} 
 '''.format(conf['target']['local-address'], self.guest_dir, self.config_name)
         filename = '{0}/start.sh'.format(self.host_dir)
         with open(filename, 'w') as f:

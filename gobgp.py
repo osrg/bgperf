@@ -41,10 +41,39 @@ RUN go install github.com/osrg/gobgp/gobgp
                 'router-id': conf['target']['router-id']
             },
         }
+        if 'policy' in conf:
+            config['policy-definitions'] = []
+            config['defined-sets'] = {
+                    'prefix-sets': [],
+            }
+            for k, v in conf['policy'].iteritems():
+                conditions = {}
+                for i, match in enumerate(v['match']):
+                    n = '{0}_match_{1}'.format(k, i)
+                    if match['type'] == 'prefix':
+                        config['defined-sets']['prefix-sets'].append({
+                            'prefix-set-name': n,
+                            'prefix-list': [{'ip-prefix': p} for p in match['value']]
+                        })
+                        conditions['match-prefix-set'] = {'prefix-set': n}
+                config['policy-definitions'].append({
+                    'name': k,
+                    'statements': [{'name': k, 'conditions': conditions, 'actions': {'route-disposition': {'accept-route': True}}}],
+                })
+
+
         def gen_neighbor_config(n):
-            return {'config': {'neighbor-address': n['local-address'].split('/')[0], 'peer-as': n['as']},
-                    'transport': {'config': {'local-address': conf['target']['local-address'].split('/')[0]}},
-                    'route-server': {'config': {'route-server-client': True}}}
+            c = {'config': {'neighbor-address': n['local-address'].split('/')[0], 'peer-as': n['as']},
+                 'transport': {'config': {'local-address': conf['target']['local-address'].split('/')[0]}},
+                 'route-server': {'config': {'route-server-client': True}}}
+            if 'filter' in n:
+                a = {}
+                a['in-policy-list'] = n['filter']['in'] if 'in' in n['filter'] else []
+                a['default-in-policy'] = 'accept-route'
+                a['export-policy-list'] = n['filter']['out'] if 'out' in n['filter'] else []
+                a['default-export-policy'] = 'accept-route'
+                c['apply-policy'] = {'config': a}
+            return c
 
         config['neighbors'] = [gen_neighbor_config(n) for n in conf['tester'].values() + [conf['monitor']]]
         with open('{0}/{1}'.format(self.host_dir, name), 'w') as f:

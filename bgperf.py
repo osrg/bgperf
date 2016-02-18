@@ -111,7 +111,7 @@ def bench(args):
         with open(args.file) as f:
             conf = yaml.load(f)
     else:
-        conf = gen_conf(args.neighbor_num, args.prefix_num)
+        conf = gen_conf(args.neighbor_num, args.prefix_num, args.filter_num)
         if not os.path.exists(config_dir):
             os.makedirs(config_dir)
         with open('{0}/scenario.yaml'.format(config_dir), 'w') as f:
@@ -211,7 +211,7 @@ def bench(args):
                 f.close() if f else None
                 return
 
-def gen_conf(neighbor, prefix):
+def gen_conf(neighbor, prefix, filter):
     conf = {}
     conf['target'] = {
         'as': 1000,
@@ -229,6 +229,17 @@ def gen_conf(neighbor, prefix):
     conf['tester'] = {}
     offset = 0
 
+    it = netaddr.iter_iprange('90.0.0.0', '100.0.0.0')
+
+    conf['policy'] = {
+        'p1': {
+            'match': [{
+                'type': 'prefix',
+                'value': list('{0}/32'.format(ip) for ip in islice(it, filter)),
+            }],
+        },
+    }
+
     it = netaddr.iter_iprange('100.0.0.0','160.0.0.0')
     for i in range(3, neighbor+3):
         router_id = '10.10.{0}.{1}'.format(i/255, i%255)
@@ -237,12 +248,15 @@ def gen_conf(neighbor, prefix):
             'router-id': router_id,
             'local-address': router_id + '/16',
             'paths': list('{0}/32'.format(ip) for ip in islice(it, prefix)),
+            'filter': {
+                'in': ['p1'],
+            },
         }
     return conf
 
 
 def config(args):
-    conf = gen_conf(args.neighbor_num, args.prefix_num)
+    conf = gen_conf(args.neighbor_num, args.prefix_num, args.filter_num)
 
     with open(args.output, 'w') as f:
         f.write(yaml.dump(conf))
@@ -274,6 +288,7 @@ if __name__ == '__main__':
     parser_bench.add_argument('-f', '--file', metavar='CONFIG_FILE')
     parser_bench.add_argument('-n', '--neighbor-num', default=100, type=int)
     parser_bench.add_argument('-p', '--prefix-num', default=100, type=int)
+    parser_bench.add_argument('-l', '--filter-num', default=100, type=int)
     parser_bench.add_argument('-o', '--output', metavar='STAT_FILE')
     parser_bench.set_defaults(func=bench)
 
@@ -281,6 +296,7 @@ if __name__ == '__main__':
     parser_config.add_argument('-o', '--output', default='bgperf.yml', type=str)
     parser_config.add_argument('-n', '--neighbor-num', default=100, type=int)
     parser_config.add_argument('-p', '--prefix-num', default=100, type=int)
+    parser_config.add_argument('-l', '--filter-num', default=100, type=int)
     parser_config.set_defaults(func=config)
 
 
