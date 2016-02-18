@@ -48,14 +48,13 @@ table master;
                 if 'in' not in n['filter']:
                     c.append('import all;')
                 else:
-                    for p in n['filter']['in']:
-                        c.append('import where {0}();'.format(p))
+                    c.append('import where {0};'.format( '&&'.join(x + '()' for x in n['filter']['in'])))
 
                 if 'out' not in n['filter']:
                     c.append('export all;')
                 else:
-                    for p in n['filter']['out']:
-                        c.append('export where {0}();'.format(p))
+                    c.append('export where {0};'.format( '&&'.join(x + '()' for x in n['filter']['out'])))
+
                 return '\n'.join(c)
             return '''import all;
 export all;
@@ -91,6 +90,17 @@ return true;
 }}
 '''.format(name, ',\n'.join(match['value']))
 
+        def gen_aspath_filter(name, match):
+            c = '''function {0}()
+{{
+'''.format(name)
+            c += '\n'.join('if (bgp_path ~ [= * {0} * =]) then return false;'.format(v) for v in match['value'])
+            c += '''
+return true;
+}
+'''
+            return c
+
         def gen_filter(name, match):
             c = ['function {0}()'.format(name), '{']
             for typ, name in match:
@@ -109,6 +119,8 @@ return true;
                         n = '{0}_match_{1}'.format(k, i)
                         if match['type'] == 'prefix':
                             f.write(gen_prefix_filter(n, match))
+                        elif match['type'] == 'as-path':
+                            f.write(gen_aspath_filter(n, match))
                         match_info.append((match['type'], n))
                     f.write(gen_filter(k, match_info))
 
