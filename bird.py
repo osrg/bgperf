@@ -53,6 +53,7 @@ protocol pipe pipe_{0} {{
 protocol bgp bgp_{0} {{
     local as {1};
     neighbor {2} as {0};
+    table table_{0};
     import all;
     export all;
     rs client;
