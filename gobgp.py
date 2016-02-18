@@ -45,9 +45,14 @@ RUN go install github.com/osrg/gobgp/gobgp
             config['policy-definitions'] = []
             config['defined-sets'] = {
                     'prefix-sets': [],
+                    'bgp-defined-sets': {
+                        'as-path-sets': [],
+                    },
             }
             for k, v in conf['policy'].iteritems():
-                conditions = {}
+                conditions = {
+                    'bgp-conditions': {},
+                }
                 for i, match in enumerate(v['match']):
                     n = '{0}_match_{1}'.format(k, i)
                     if match['type'] == 'prefix':
@@ -56,6 +61,12 @@ RUN go install github.com/osrg/gobgp/gobgp
                             'prefix-list': [{'ip-prefix': p} for p in match['value']]
                         })
                         conditions['match-prefix-set'] = {'prefix-set': n}
+                    elif match['type'] == 'as-path':
+                        config['defined-sets']['bgp-defined-sets']['as-path-sets'].append({
+                            'as-path-set-name': n,
+                            'as-path-list': match['value'],
+                        })
+                        conditions['bgp-conditions']['match-as-path-set'] = {'as-path-set': n}
                 config['policy-definitions'].append({
                     'name': k,
                     'statements': [{'name': k, 'conditions': conditions, 'actions': {'route-disposition': {'accept-route': True}}}],

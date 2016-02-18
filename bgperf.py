@@ -245,6 +245,12 @@ def gen_conf(neighbor, prefix, filter):
                 'value': list('{0}/32'.format(ip) for ip in islice(it, filter)),
             }],
         },
+        'p2': {
+            'match': [{
+                'type': 'as-path',
+                'value': list(range(10000, 10000 + filter)),
+            }],
+        },
     }
 
     it = netaddr.iter_iprange('100.0.0.0','160.0.0.0')
@@ -256,7 +262,7 @@ def gen_conf(neighbor, prefix, filter):
             'local-address': router_id + '/16',
             'paths': list('{0}/32'.format(ip) for ip in islice(it, prefix)),
             'filter': {
-                'in': ['p1'],
+                'in': ['p1', 'p2'],
             },
         }
     return conf
