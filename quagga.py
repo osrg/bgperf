@@ -68,12 +68,17 @@ neighbor {0} timers 30 90
                         if match['type'] == 'prefix':
                             f.write(''.join('ip prefix-list {0} deny {1}\n'.format(n, p) for p in match['value']))
                             f.write('ip prefix-list {0} permit any\n'.format(n))
+                        elif match['type'] == 'as-path':
+                            f.write(''.join('ip as-path access-list {0} deny _{1}_\n'.format(n, p) for p in match['value']))
+                            f.write('ip as-path access-list {0} permit .*\n'.format(n))
                         match_info.append((match['type'], n))
 
                     f.write('route-map {0} permit {1}\n'.format(k, seq))
                     for info in match_info:
                         if info[0] == 'prefix':
                             f.write('match ip address prefix-list {0}\n'.format(info[1]))
+                        elif info[0] == 'as-path':
+                            f.write('match as-path {0}\n'.format(info[1]))
 
                     seq += 10
 
