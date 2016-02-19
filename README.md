@@ -80,9 +80,14 @@ elapsed: 33sec, cpu: 0.02%, mem: 477.93MB
 elapsed time: 28sec
 ```
 
-To change a load, use `-n` and `-p` options.
-`-n` option specifies the number of BGP test peer.
-`-p` option specifies the number of prefix each peer advertise.
+To change a load, use following options.
+
+* `-n` : the number of BGP test peer (default 100)
+* `-p` : the number of prefix each peer advertise (default 100)
+* `-a` : the number of as-path filter (default 0)
+* `-e` : the number of prefix-list filter (default 0)
+* `-c` : the number of community-list filter (default 0)
+* `-x` : the number of ext-community-list filter (default 0)
 
 ```bash
 $ sudo ./bgperf.py bench -n 200 -p 50
