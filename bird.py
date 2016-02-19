@@ -101,6 +101,17 @@ return true;
 '''
             return c
 
+        def gen_community_filter(name, match):
+            c = '''function {0}()
+{{
+'''.format(name)
+            c += '\n'.join('if ({0}, {1}) ~ bgp_community then return false;'.format(v.split(':')[0], v.split(':')[1]) for v in match['value'])
+            c += '''
+return true;
+}
+'''
+            return c
+
         def gen_filter(name, match):
             c = ['function {0}()'.format(name), '{']
             for typ, name in match:
@@ -121,6 +132,8 @@ return true;
                             f.write(gen_prefix_filter(n, match))
                         elif match['type'] == 'as-path':
                             f.write(gen_aspath_filter(n, match))
+                        elif match['type'] == 'community':
+                            f.write(gen_community_filter(n, match))
                         match_info.append((match['type'], n))
                     f.write(gen_filter(k, match_info))
 

@@ -223,6 +223,7 @@ def gen_conf(args):
     prefix = args.prefix_num
     as_path_list = args.as_path_list_num
     prefix_list = args.prefix_list_num
+    community_list = args.community_list_num
 
     conf = {}
     conf['target'] = {
@@ -263,6 +264,16 @@ def gen_conf(args):
             'match': [{
                 'type': 'as-path',
                 'value': list(range(10000, 10000 + as_path_list)),
+            }],
+        }
+        assignment.append(name)
+
+    if community_list > 0:
+        name = 'p3'
+        conf['policy'][name] = {
+            'match': [{
+                'type': 'community',
+                'value': list('{0}:{1}'.format(i/(1<<16), i%(1<<16)) for i in range(community_list)),
             }],
         }
         assignment.append(name)
@@ -318,6 +329,7 @@ if __name__ == '__main__':
     parser_bench.add_argument('-l', '--filter-type', choices=['in', 'out'], default='in')
     parser_bench.add_argument('-a', '--as-path-list-num', default=0, type=int)
     parser_bench.add_argument('-e', '--prefix-list-num', default=0, type=int)
+    parser_bench.add_argument('-c', '--community-list-num', default=0, type=int)
     parser_bench.add_argument('-g', '--cooling', default=0, type=int)
     parser_bench.add_argument('-o', '--output', metavar='STAT_FILE')
     parser_bench.set_defaults(func=bench)
@@ -329,6 +341,7 @@ if __name__ == '__main__':
     parser_config.add_argument('-l', '--filter-type', choices=['in', 'out'], default='in')
     parser_config.add_argument('-a', '--as-path-list-num', default=0, type=int)
     parser_config.add_argument('-e', '--prefix-list-num', default=0, type=int)
+    parser_config.add_argument('-c', '--community-list-num', default=0, type=int)
     parser_config.set_defaults(func=config)
 
 

@@ -47,6 +47,7 @@ RUN go install github.com/osrg/gobgp/gobgp
                     'prefix-sets': [],
                     'bgp-defined-sets': {
                         'as-path-sets': [],
+                        'community-sets': [],
                     },
             }
             for k, v in conf['policy'].iteritems():
@@ -67,6 +68,13 @@ RUN go install github.com/osrg/gobgp/gobgp
                             'as-path-list': match['value'],
                         })
                         conditions['bgp-conditions']['match-as-path-set'] = {'as-path-set': n}
+                    elif match['type'] == 'community':
+                        config['defined-sets']['bgp-defined-sets']['community-sets'].append({
+                            'community-set-name': n,
+                            'community-list': match['value'],
+                        })
+                        conditions['bgp-conditions']['match-community-set'] = {'community-set': n}
+
                 config['policy-definitions'].append({
                     'name': k,
                     'statements': [{'name': k, 'conditions': conditions, 'actions': {'route-disposition': {'accept-route': True}}}],
