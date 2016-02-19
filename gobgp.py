@@ -79,16 +79,18 @@ RUN go install github.com/osrg/gobgp/gobgp
                  'route-server': {'config': {'route-server-client': True}}}
             if 'filter' in n:
                 a = {}
-                a['in-policy-list'] = n['filter']['in'] if 'in' in n['filter'] else []
-                a['default-in-policy'] = 'accept-route'
-                a['export-policy-list'] = n['filter']['out'] if 'out' in n['filter'] else []
-                a['default-export-policy'] = 'accept-route'
+                if 'in' in n['filter']:
+                    a['in-policy-list'] = n['filter']['in']
+                    a['default-in-policy'] = 'accept-route'
+                if 'out' in n['filter']:
+                    a['export-policy-list'] = n['filter']['out']
+                    a['default-export-policy'] = 'accept-route'
                 c['apply-policy'] = {'config': a}
             return c
 
         config['neighbors'] = [gen_neighbor_config(n) for n in conf['tester'].values() + [conf['monitor']]]
         with open('{0}/{1}'.format(self.host_dir, name), 'w') as f:
-            f.write(yaml.dump(config))
+            f.write(yaml.dump(config, default_flow_style=False))
         self.config_name = name
 
     def run(self, conf, brname=''):

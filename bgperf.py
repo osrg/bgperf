@@ -111,7 +111,7 @@ def bench(args):
         with open(args.file) as f:
             conf = yaml.load(f)
     else:
-        conf = gen_conf(args.neighbor_num, args.prefix_num, args.filter_num)
+        conf = gen_conf(args)
         if not os.path.exists(config_dir):
             os.makedirs(config_dir)
         with open('{0}/scenario.yaml'.format(config_dir), 'w') as f:
@@ -218,7 +218,12 @@ def bench(args):
             if info['checked']:
                 cooling = 0
 
-def gen_conf(neighbor, prefix, filter):
+def gen_conf(args):
+    neighbor = args.neighbor_num
+    prefix = args.prefix_num
+    as_path_list = args.as_path_list_num
+    prefix_list = args.prefix_list_num
+
     conf = {}
     conf['target'] = {
         'as': 1000,
@@ -238,20 +243,29 @@ def gen_conf(neighbor, prefix, filter):
 
     it = netaddr.iter_iprange('90.0.0.0', '100.0.0.0')
 
-    conf['policy'] = {
-        'p1': {
+    conf['policy'] = {}
+
+    assignment = []
+
+    if prefix_list > 0:
+        name = 'p1'
+        conf['policy'][name] = {
             'match': [{
                 'type': 'prefix',
-                'value': list('{0}/32'.format(ip) for ip in islice(it, filter)),
+                'value': list('{0}/32'.format(ip) for ip in islice(it, prefix_list)),
             }],
-        },
-        'p2': {
+        }
+        assignment.append(name)
+
+    if as_path_list > 0:
+        name = 'p2'
+        conf['policy'][name] = {
             'match': [{
                 'type': 'as-path',
-                'value': list(range(10000, 10000 + filter)),
+                'value': list(range(10000, 10000 + as_path_list)),
             }],
-        },
-    }
+        }
+        assignment.append(name)
 
     it = netaddr.iter_iprange('100.0.0.0','160.0.0.0')
     for i in range(3, neighbor+3):
@@ -262,14 +276,14 @@ def gen_conf(neighbor, prefix, filter):
             'local-address': router_id + '/16',
             'paths': list('{0}/32'.format(ip) for ip in islice(it, prefix)),
             'filter': {
-                'in': ['p1', 'p2'],
+                args.filter_type: assignment,
             },
         }
     return conf
 
 
 def config(args):
-    conf = gen_conf(args.neighbor_num, args.prefix_num, args.filter_num)
+    conf = gen_conf(args)
 
     with open(args.output, 'w') as f:
         f.write(yaml.dump(conf))
@@ -301,7 +315,9 @@ if __name__ == '__main__':
     parser_bench.add_argument('-f', '--file', metavar='CONFIG_FILE')
     parser_bench.add_argument('-n', '--neighbor-num', default=100, type=int)
     parser_bench.add_argument('-p', '--prefix-num', default=100, type=int)
-    parser_bench.add_argument('-l', '--filter-num', default=100, type=int)
+    parser_bench.add_argument('-l', '--filter-type', choices=['in', 'out'], default='in')
+    parser_bench.add_argument('-a', '--as-path-list-num', default=0, type=int)
+    parser_bench.add_argument('-e', '--prefix-list-num', default=0, type=int)
     parser_bench.add_argument('-o', '--output', metavar='STAT_FILE')
     parser_bench.set_defaults(func=bench)
 
@@ -309,7 +325,9 @@ if __name__ == '__main__':
     parser_config.add_argument('-o', '--output', default='bgperf.yml', type=str)
     parser_config.add_argument('-n', '--neighbor-num', default=100, type=int)
     parser_config.add_argument('-p', '--prefix-num', default=100, type=int)
-    parser_config.add_argument('-l', '--filter-num', default=100, type=int)
+    parser_config.add_argument('-l', '--filter-type', choices=['in', 'out'], default='in')
+    parser_config.add_argument('-a', '--as-path-list-num', default=0, type=int)
+    parser_config.add_argument('-e', '--prefix-list-num', default=0, type=int)
     parser_config.set_defaults(func=config)
 
 
