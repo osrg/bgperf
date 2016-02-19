@@ -20,7 +20,7 @@ class Quagga(Container):
         super(Quagga, self).__init__(name, image, host_dir, guest_dir)
 
     @classmethod
-    def build_image(cls, force=False, tag='bgperf/quagga', checkout='HEAD'):
+    def build_image(cls, force=False, tag='bgperf/quagga', checkout='HEAD', nocache=False):
         cls.dockerfile = '''
 FROM ubuntu:latest
 WORKDIR /root
@@ -33,7 +33,7 @@ RUN git clone git://git.sv.gnu.org/quagga.git quagga && \
 ./configure --disable-doc --localstatedir=/var/run/quagga && make && make install)
 RUN ldconfig
 '''.format(checkout)
-        super(Quagga, cls).build_image(force, tag)
+        super(Quagga, cls).build_image(force, tag, nocache)
 
     def write_config(self, conf, name='bgpd.conf'):
         config = """hostname bgpd
