@@ -74,6 +74,9 @@ neighbor {0} timers 30 90
                         elif match['type'] == 'community':
                             f.write(''.join('ip community-list standard {0} permit {1}\n'.format(n, p) for p in match['value']))
                             f.write('ip community-list standard {0} permit\n'.format(n))
+                        elif match['type'] == 'ext-community':
+                            f.write(''.join('ip extcommunity-list standard {0} permit {1} {2}\n'.format(n, *p.split(':', 1)) for p in match['value']))
+                            f.write('ip extcommunity-list standard {0} permit\n'.format(n))
 
                         match_info.append((match['type'], n))
 
@@ -85,6 +88,8 @@ neighbor {0} timers 30 90
                             f.write('match as-path {0}\n'.format(info[1]))
                         elif info[0] == 'community':
                             f.write('match community {0}\n'.format(info[1]))
+                        elif info[0] == 'ext-community':
+                            f.write('match extcommunity {0}\n'.format(info[1]))
 
                     seq += 10
 

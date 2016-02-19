@@ -105,12 +105,25 @@ return true;
             c = '''function {0}()
 {{
 '''.format(name)
-            c += '\n'.join('if ({0}, {1}) ~ bgp_community then return false;'.format(v.split(':')[0], v.split(':')[1]) for v in match['value'])
+            c += '\n'.join('if ({0}, {1}) ~ bgp_community then return false;'.format(*v.split(':')) for v in match['value'])
             c += '''
 return true;
 }
 '''
             return c
+
+        def gen_ext_community_filter(name, match):
+            c = '''function {0}()
+{{
+'''.format(name)
+            c += '\n'.join('if ({0}, {1}, {2}) ~ bgp_ext_community then return false;'.format(*v.split(':')) for v in match['value'])
+            c += '''
+return true;
+}
+'''
+            return c
+
+
 
         def gen_filter(name, match):
             c = ['function {0}()'.format(name), '{']
@@ -134,6 +147,8 @@ return true;
                             f.write(gen_aspath_filter(n, match))
                         elif match['type'] == 'community':
                             f.write(gen_community_filter(n, match))
+                        elif match['type'] == 'ext-community':
+                            f.write(gen_ext_community_filter(n, match))
                         match_info.append((match['type'], n))
                     f.write(gen_filter(k, match_info))
 
