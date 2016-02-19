@@ -208,7 +208,7 @@ def bench(args):
             f.write('{0}, {1}, {2}, {3}\n'.format(elapsed.seconds, cpu, mem, recved)) if f else None
             f.flush() if f else None
 
-            if cooling == 5:
+            if cooling == args.cooling:
                 f.close() if f else None
                 return
 
@@ -318,6 +318,7 @@ if __name__ == '__main__':
     parser_bench.add_argument('-l', '--filter-type', choices=['in', 'out'], default='in')
     parser_bench.add_argument('-a', '--as-path-list-num', default=0, type=int)
     parser_bench.add_argument('-e', '--prefix-list-num', default=0, type=int)
+    parser_bench.add_argument('-g', '--cooling', default=0, type=int)
     parser_bench.add_argument('-o', '--output', metavar='STAT_FILE')
     parser_bench.set_defaults(func=bench)
 
