@@ -45,12 +45,12 @@ table master;
         def gen_filter_assignment(n):
             if 'filter' in n:
                 c = []
-                if 'in' not in n['filter']:
+                if 'in' not in n['filter'] or len(n['filter']['in']) == 0:
                     c.append('import all;')
                 else:
                     c.append('import where {0};'.format( '&&'.join(x + '()' for x in n['filter']['in'])))
 
-                if 'out' not in n['filter']:
+                if 'out' not in n['filter'] or len(n['filter']['out']) == 0:
                     c.append('export all;')
                 else:
                     c.append('export where {0};'.format( '&&'.join(x + '()' for x in n['filter']['out'])))
