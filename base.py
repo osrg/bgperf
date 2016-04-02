@@ -91,6 +91,22 @@ class Container(object):
 
     @classmethod
     def build_image(cls, force, tag, nocache=False):
+        def insert_after_from(dockerfile, line):
+            lines = dockerfile.split('\n')
+            i = -1
+            for idx, l in enumerate(lines):
+                elems = [e.strip() for e in l.split()]
+                if len(elems) > 0 and elems[0] == 'FROM':
+                    i = idx
+            if i < 0:
+                raise Exception('no FROM statement')
+            lines.insert(i+1, line)
+            return '\n'.join(lines)
+
+        for env in ['http_proxy', 'https_proxy']:
+            if env in os.environ:
+                cls.dockerfile = insert_after_from(cls.dockerfile, 'ENV {0} {1}'.format(env, os.environ[env]))
+
         f = io.BytesIO(cls.dockerfile.encode('utf-8'))
         if force or not img_exists(tag):
             print 'build {0}...'.format(tag)
