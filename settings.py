@@ -16,4 +16,4 @@
 
 from docker import Client
 
-dckr = Client()
+dckr = Client(version='auto')

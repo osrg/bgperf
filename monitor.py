@@ -51,25 +51,20 @@ gobgpd -t yaml -f {1}/{2} -l {3} > {1}/gobgpd.log 2>&1
             f.write(startup)
         os.chmod(filename, 0777)
         i = dckr.exec_create(container=self.name, cmd='{0}/start.sh'.format(self.guest_dir))
-        dckr.exec_start(i['Id'], detach=True)
+        dckr.exec_start(i['Id'], detach=True, socket=True)
         self.config = conf
         return ctn
 
     def local(self, cmd, stream=False):
         i = dckr.exec_create(container=self.name, cmd=cmd)
-        return dckr.exec_start(i['Id'], tty=True, stream=stream)
+        return dckr.exec_start(i['Id'], stream=stream)
 
     def wait_established(self, neighbor):
-        it = self.local('gobgp monitor neighbor {0} -j'.format(neighbor), stream=True)
-        buf = ''
-        for line in it:
-            if line == '\n':
-                neigh = json.loads(buf)
-                if neigh['info']['bgp_state'] == 'BGP_FSM_ESTABLISHED':
-                    return
-                buf = ''
-            else:
-                buf += line
+        while True:
+            neigh = json.loads(self.local('gobgp neighbor {0} -j'.format(neighbor)))
+            if neigh['info']['bgp_state'] == 'BGP_FSM_ESTABLISHED':
+                return
+            time.sleep(1)
 
     def stats(self, queue):
         def stats():

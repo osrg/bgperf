@@ -174,6 +174,5 @@ bird -c {1}/{2}
             f.write(startup)
         os.chmod(filename, 0777)
         i = dckr.exec_create(container=self.name, cmd='{0}/start.sh'.format(self.guest_dir))
-        dckr.exec_inspect(i['Id'])
-        dckr.exec_start(i['Id'], detach=True)
+        dckr.exec_start(i['Id'], detach=True, socket=True)
         return ctn
