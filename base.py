@@ -29,7 +29,7 @@ def ctn_exists(name):
 
 
 def img_exists(name):
-    return name in [ctn['RepoTags'][0].split(':')[0] for ctn in dckr.images()]
+    return name in [ctn['RepoTags'][0].split(':')[0] for ctn in dckr.images() if ctn['RepoTags'] != None]
 
 
 class docker_netns(object):
