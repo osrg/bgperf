@@ -231,6 +231,7 @@ def gen_conf(args):
         'as': 1000,
         'router-id': '10.10.0.1',
         'local-address': '10.10.0.1/16',
+        'single-table': args.single_table,
     }
 
     conf['monitor'] = {
@@ -344,6 +345,7 @@ if __name__ == '__main__':
     parser_bench.add_argument('-x', '--ext-community-list-num', default=0, type=int)
     parser_bench.add_argument('-g', '--cooling', default=0, type=int)
     parser_bench.add_argument('-o', '--output', metavar='STAT_FILE')
+    parser_bench.add_argument('-s', '--single-table', action='store_true')
     parser_bench.set_defaults(func=bench)
 
     parser_config = s.add_parser('config', help='generate config')
@@ -355,6 +357,7 @@ if __name__ == '__main__':
     parser_config.add_argument('-e', '--prefix-list-num', default=0, type=int)
     parser_config.add_argument('-c', '--community-list-num', default=0, type=int)
     parser_config.add_argument('-x', '--ext-community-list-num', default=0, type=int)
+    parser_config.add_argument('-s', '--single-table', action='store_true')
     parser_config.set_defaults(func=config)
 
 

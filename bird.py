@@ -39,8 +39,8 @@ listen bgp port 179;
 protocol device {{ }}
 protocol direct {{ disabled; }}
 protocol kernel {{ disabled; }}
-table master;
-'''.format(conf['target']['router-id'])
+table master{1};
+'''.format(conf['target']['router-id'], ' sorted' if conf['target']['single-table'] else '')
 
         def gen_filter_assignment(n):
             if 'filter' in n:
@@ -61,22 +61,22 @@ export all;
 '''
 
         def gen_neighbor_config(n):
-            return '''table table_{0};
+            return ('''table table_{0};
 protocol pipe pipe_{0} {{
     table master;
     mode transparent;
     peer table table_{0};
-{3}
-}}
-protocol bgp bgp_{0} {{
+{1}
+}}'''.format(n['as'], gen_filter_assignment(n)) if not conf['target']['single-table'] else '') + '''protocol bgp bgp_{0} {{
     local as {1};
     neighbor {2} as {0};
-    table table_{0};
+    {3};
     import all;
     export all;
     rs client;
 }}
-'''.format(n['as'], conf['target']['as'], n['local-address'].split('/')[0], gen_filter_assignment(n))
+'''.format(n['as'], conf['target']['as'], n['local-address'].split('/')[0], 'secondary' if conf['target']['single-table'] else 'table table_{0}'.format(n['as']))
+            return n1 + n2
 
         def gen_prefix_filter(name, match):
             return '''function {0}()
