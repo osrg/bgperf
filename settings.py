@@ -14,6 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from docker import Client
+try:
+    from docker import Client
+except ImportError:
+    from docker import APIClient as Client
 
 dckr = Client(version='auto')
