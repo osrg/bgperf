@@ -37,6 +37,7 @@ from tester import Tester
 from monitor import Monitor
 from settings import dckr
 from Queue import Queue
+from mako.template import Template
 
 def rm_line():
     print '\x1b[1A\x1b[2K\x1b[1D\x1b[1A'
@@ -109,7 +110,7 @@ def bench(args):
 
     if args.file:
         with open(args.file) as f:
-            conf = yaml.load(f)
+            conf = yaml.load(Template(f.read()).render())
     else:
         conf = gen_conf(args)
         if not os.path.exists(config_dir):
