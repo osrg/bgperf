@@ -122,7 +122,7 @@ class Container(object):
 
         config = dckr.create_host_config(binds=['{0}:{1}'.format(os.path.abspath(self.host_dir), self.guest_dir)],
                                          privileged=True)
-        ctn = dckr.create_container(image=self.image, command='bash', detach=True, name=self.name,
+        ctn = dckr.create_container(image=self.image, entrypoint='bash', detach=True, name=self.name,
                                     stdin_open=True, volumes=[self.guest_dir], host_config=config)
         dckr.start(container=self.name)
         if brname != '':

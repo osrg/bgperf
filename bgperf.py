@@ -39,6 +39,18 @@ from settings import dckr
 from Queue import Queue
 from mako.template import Template
 
+def gen_mako_macro():
+    return '''<%
+    import netaddr
+    from itertools import islice
+
+    it = netaddr.iter_iprange('100.0.0.0','160.0.0.0')
+
+    def gen_paths(num):
+        return list('{0}/32'.format(ip) for ip in islice(it, num))
+%>
+'''
+
 def rm_line():
     print '\x1b[1A\x1b[2K\x1b[1D\x1b[1A'
 
@@ -116,7 +128,8 @@ def bench(args):
         if not os.path.exists(config_dir):
             os.makedirs(config_dir)
         with open('{0}/scenario.yaml'.format(config_dir), 'w') as f:
-            f.write(yaml.dump(conf))
+            f.write(conf)
+        conf = yaml.load(Template(conf).render())
 
     if len(conf['tester']) > gc_thresh3():
         print 'gc_thresh3({0}) is lower than the number of peer({1})'.format(gc_thresh3(), len(conf['tester']))
@@ -291,26 +304,25 @@ def gen_conf(args):
         }
         assignment.append(name)
 
-    it = netaddr.iter_iprange('100.0.0.0','160.0.0.0')
     for i in range(3, neighbor+3):
         router_id = '10.10.{0}.{1}'.format(i/255, i%255)
         conf['tester'][router_id] = {
             'as': 1000 + i,
             'router-id': router_id,
             'local-address': router_id + '/16',
-            'paths': list('{0}/32'.format(ip) for ip in islice(it, prefix)),
+            'paths': '${{gen_paths({0})}}'.format(prefix),
             'filter': {
                 args.filter_type: assignment,
             },
         }
-    return conf
+    return gen_mako_macro() + yaml.dump(conf)
 
 
 def config(args):
     conf = gen_conf(args)
 
     with open(args.output, 'w') as f:
-        f.write(yaml.dump(conf))
+        f.write(conf)
 
 
 if __name__ == '__main__':
