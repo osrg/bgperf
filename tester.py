@@ -25,13 +25,13 @@ class Tester(ExaBGP):
     def __init__(self, name, host_dir):
         super(Tester, self).__init__(name, host_dir)
 
-    def run(self, conf, brname=''):
+    def run(self, conf, target, brname=''):
         super(Tester, self).run(brname)
 
         startup = ['''#!/bin/bash
 ulimit -n 65536''']
 
-        peers = conf['tester'].values()
+        peers = conf.get('tester', {}).values()
 
         for p in peers:
             with open('{0}/{1}.conf'.format(self.host_dir, p['router-id']), 'w') as f:
@@ -42,7 +42,7 @@ ulimit -n 65536''']
     local-address {3};
     local-as {4};
     static {{
-'''.format(conf['target']['local-address'].split('/')[0], conf['target']['as'],
+'''.format(target['local-address'].split('/')[0], target['as'],
                p['router-id'], local_address, p['as'])
                 f.write(config)
                 for path in p['paths']:
@@ -69,4 +69,4 @@ exabgp {0}/{1}.conf'''.format(self.guest_dir, p['router-id']))
                     if cnt % 2 == 1:
                         if cnt > 1:
                             rm_line()
-                        print 'tester booting.. ({0}/{1})'.format(cnt/2 + 1, len(conf['tester']))
+                        print 'tester booting.. ({0}/{1})'.format(cnt/2 + 1, len(conf.get('tester', {}).values()))

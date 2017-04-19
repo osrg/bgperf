@@ -34,6 +34,7 @@ from gobgp import GoBGP
 from bird import BIRD
 from quagga import Quagga
 from tester import Tester
+from mrt_tester import MRTTester
 from monitor import Monitor
 from settings import dckr
 from Queue import Queue
@@ -131,8 +132,9 @@ def bench(args):
             f.write(conf)
         conf = yaml.load(Template(conf).render())
 
-    if len(conf['tester']) > gc_thresh3():
-        print 'gc_thresh3({0}) is lower than the number of peer({1})'.format(gc_thresh3(), len(conf['tester']))
+    num_tester = sum(len(t.get('tester', [])) for t in conf.get('testers', []))
+    if num_tester > gc_thresh3():
+        print 'gc_thresh3({0}) is lower than the number of peer({1})'.format(gc_thresh3(), num_tester)
         print 'type next to increase the value'
         print '$ echo 16384 | sudo tee /proc/sys/net/ipv4/neigh/default/gc_thresh3'
 
@@ -180,8 +182,23 @@ def bench(args):
 
     if not args.repeat:
         print 'run tester'
-        t = Tester('tester', config_dir+'/tester')
-        t.run(conf, brname)
+        for idx, tester in enumerate(conf['testers']):
+            if 'name' not in tester:
+                name = 'tester{0}'.format(idx)
+            else:
+                name = tester['name']
+            if 'type' not in tester:
+                tester_type = 'normal'
+            else:
+                tester_type = tester['type']
+            if tester_type == 'normal':
+                t = Tester(name, config_dir+'/'+name)
+            elif tester_type == 'mrt':
+                t = MRTTester(name, config_dir+'/'+name)
+            else:
+                print 'invalid tester type:', tester_type
+                sys.exit(1)
+            t.run(tester, conf['target'], brname)
 
     start = datetime.datetime.now()
 
@@ -255,7 +272,6 @@ def gen_conf(args):
         'check-points': [prefix * neighbor],
     }
 
-    conf['tester'] = {}
     offset = 0
 
     it = netaddr.iter_iprange('90.0.0.0', '100.0.0.0')
@@ -304,9 +320,10 @@ def gen_conf(args):
         }
         assignment.append(name)
 
+    tester = {}
     for i in range(3, neighbor+3):
         router_id = '10.10.{0}.{1}'.format(i/255, i%255)
-        conf['tester'][router_id] = {
+        tester[router_id] = {
             'as': 1000 + i,
             'router-id': router_id,
             'local-address': router_id + '/16',
@@ -315,7 +332,12 @@ def gen_conf(args):
                 args.filter_type: assignment,
             },
         }
-    return gen_mako_macro() + yaml.dump(conf)
+    conf['testers'] = [{
+        'name': 'tester',
+        'type': 'normal',
+        'tester': tester,
+    }]
+    return gen_mako_macro() + yaml.dump(conf, default_flow_style=False)
 
 
 def config(args):
