@@ -5,3 +5,4 @@ nsenter
 netaddr
 mako
 six
+packaging
