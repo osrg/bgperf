@@ -27,7 +27,7 @@ WORKDIR /root
 RUN apt-get update && apt-get install -qy git python python-setuptools gcc python-dev
 RUN easy_install pip
 RUN git clone https://github.com/Exa-Networks/exabgp && \
-(cd exabgp && git checkout {0} && pip install -r requirements.txt && python setup.py install)
+(cd exabgp && git checkout {0} && pip install six && pip install -r requirements.txt && python setup.py install)
 RUN ln -s /root/exabgp /exabgp
 '''.format(checkout)
         super(ExaBGP, cls).build_image(force, tag, nocache)
