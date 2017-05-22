@@ -16,8 +16,8 @@
 from base import *
 
 class Quagga(Container):
-    def __init__(self, name, host_dir, guest_dir='/root/config', image='bgperf/quagga'):
-        super(Quagga, self).__init__(name, image, host_dir, guest_dir)
+    def __init__(self, name, host_dir, conf, guest_dir='/root/config', image='bgperf/quagga'):
+        super(Quagga, self).__init__(name, image, host_dir, guest_dir, conf)
 
     @classmethod
     def build_image(cls, force=False, tag='bgperf/quagga', checkout='HEAD', nocache=False):
@@ -36,6 +36,9 @@ RUN ldconfig
         super(Quagga, cls).build_image(force, tag, nocache)
 
     def write_config(self, conf, name='bgpd.conf'):
+        if self.use_existing_config(name):
+            return
+
         config = """hostname bgpd
 password zebra
 router bgp {0}

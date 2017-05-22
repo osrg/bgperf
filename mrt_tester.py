@@ -20,8 +20,6 @@ from  settings import dckr
 import shutil
 
 class MRTTester(GoBGP):
-    def __init__(self, name, host_dir):
-        super(MRTTester, self).__init__(name, host_dir)
 
     def run(self, conf, target, brname=''):
         ctn = super(GoBGP, self).run(brname)

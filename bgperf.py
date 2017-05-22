@@ -145,11 +145,11 @@ def bench(args):
         print '$ echo 16384 | sudo tee /proc/sys/net/ipv4/neigh/default/gc_thresh3'
 
     if args.target == 'gobgp':
-        target = GoBGP
+        target_class = GoBGP
     elif args.target == 'bird':
-        target = BIRD
+        target_class = BIRD
     elif args.target == 'quagga':
-        target = Quagga
+        target_class = Quagga
 
     is_remote = True if 'remote' in conf['target'] and conf['target']['remote'] else False
 
@@ -172,13 +172,13 @@ def bench(args):
     else:
         print 'run', args.target
         if args.image:
-            target = target(args.target, '{0}/{1}'.format(config_dir, args.target), image=args.image)
+            target = target_class(args.target, '{0}/{1}'.format(config_dir, args.target), conf['target'], image=args.image)
         else:
-            target = target(args.target, '{0}/{1}'.format(config_dir, args.target))
+            target = target(args.target, '{0}/{1}'.format(config_dir, args.target), conf['target'])
         target.run(conf, brname)
 
     print 'run monitor'
-    m = Monitor('monitor', config_dir+'/monitor')
+    m = Monitor('monitor', config_dir+'/monitor', conf['monitor'])
     m.run(conf, brname)
 
     time.sleep(1)
@@ -198,9 +198,9 @@ def bench(args):
             else:
                 tester_type = tester['type']
             if tester_type == 'normal':
-                t = Tester(name, config_dir+'/'+name)
+                t = Tester(name, config_dir+'/'+name, tester)
             elif tester_type == 'mrt':
-                t = MRTTester(name, config_dir+'/'+name)
+                t = MRTTester(name, config_dir+'/'+name, tester)
             else:
                 print 'invalid tester type:', tester_type
                 sys.exit(1)

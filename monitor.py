@@ -22,8 +22,6 @@ from threading import Thread
 import time
 
 class Monitor(GoBGP):
-    def __init__(self, name, host_dir):
-        super(Monitor, self).__init__(name, host_dir)
 
     def run(self, conf, brname=''):
         ctn = super(GoBGP, self).run(brname)

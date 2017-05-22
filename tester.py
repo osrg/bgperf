@@ -22,8 +22,6 @@ def rm_line():
 
 
 class Tester(ExaBGP):
-    def __init__(self, name, host_dir):
-        super(Tester, self).__init__(name, host_dir)
 
     def run(self, conf, target, brname=''):
         super(Tester, self).run(brname)

@@ -16,8 +16,8 @@
 from base import *
 
 class ExaBGP(Container):
-    def __init__(self, name, host_dir, guest_dir='/root/config', image='bgperf/exabgp'):
-        super(ExaBGP, self).__init__(name, image, host_dir, guest_dir)
+    def __init__(self, name, host_dir, conf, guest_dir='/root/config', image='bgperf/exabgp'):
+        super(ExaBGP, self).__init__(name, image, host_dir, guest_dir, conf)
 
     @classmethod
     def build_image(cls, force=False, tag='bgperf/exabgp', checkout='HEAD', nocache=False):

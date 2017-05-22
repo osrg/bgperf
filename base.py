@@ -78,16 +78,25 @@ def connect_ctn_to_br(ctn, brname):
 
 
 class Container(object):
-    def __init__(self, name, image, host_dir, guest_dir):
+    def __init__(self, name, image, host_dir, guest_dir, conf):
         self.name = name
         self.image = image
         self.host_dir = host_dir
         self.guest_dir = guest_dir
+        self.conf = conf
         self.config_name = None
         if not os.path.exists(host_dir):
             os.makedirs(host_dir)
             os.chmod(host_dir, 0777)
 
+    def use_existing_config(self, name):
+        if 'config_path' in self.conf:
+            with open('{0}/{1}'.format(self.host_dir, name), 'w') as f:
+                with open(self.conf['config_path'], 'r') as orig:
+                    f.write(orig.read())
+            self.config_name = name
+            return True
+        return False
 
     @classmethod
     def build_image(cls, force, tag, nocache=False):
