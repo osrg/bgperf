@@ -40,6 +40,7 @@ from settings import dckr
 from Queue import Queue
 from mako.template import Template
 from packaging import version
+from docker.types import IPAMConfig, IPAMPool
 
 def gen_mako_macro():
     return '''<%
@@ -109,7 +110,18 @@ def update(args):
 
 def bench(args):
     config_dir = '{0}/{1}'.format(args.dir, args.bench_name)
-    brname = args.bench_name + '-br'
+    brname = args.bridge_name or args.bench_name + '-br'
+
+    bridge_found = False
+    for network in dckr.networks(names=[brname]):
+        print 'network "{}" already exists'.format(brname)
+        bridge_found = True
+        break
+    if not bridge_found:
+        subnet = args.local_address_prefix
+        print 'creating network "{}" with subnet {}'.format(brname, subnet)
+        ipam = IPAMConfig(pool_configs=[IPAMPool(subnet=subnet)])
+        network = dckr.create_network(brname, driver='bridge', ipam=ipam)
 
     ip = IPRoute()
     ctn_intfs = flatten((l.get_attr('IFLA_IFNAME') for l in ip.get_links() if l.get_attr('IFLA_MASTER') == br) for br in ip.link_lookup(ifname=brname))
@@ -375,6 +387,7 @@ if __name__ == '__main__':
     parser_bench = s.add_parser('bench', help='run benchmarks')
     parser_bench.add_argument('-t', '--target', choices=['gobgp', 'bird', 'quagga'], default='gobgp')
     parser_bench.add_argument('-i', '--image', help='specify custom docker image')
+    parser_bench.add_argument('--bridge-name', help='Docker bridge name; this is the name given by \'docker network ls\'')
     parser_bench.add_argument('-r', '--repeat', action='store_true', help='use existing tester/monitor container')
     parser_bench.add_argument('-f', '--file', metavar='CONFIG_FILE')
     parser_bench.add_argument('-n', '--neighbor-num', default=100, type=int)

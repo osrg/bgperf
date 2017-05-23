@@ -41,7 +41,6 @@ class Monitor(GoBGP):
         self.config_name = 'gobgpd.conf'
         startup = '''#!/bin/bash
 ulimit -n 65536
-ip a add {0} dev eth1
 gobgpd -t yaml -f {1}/{2} -l {3} > {1}/gobgpd.log 2>&1
 '''.format(conf['monitor']['local-address'], self.guest_dir, self.config_name, 'info')
         filename = '{0}/start.sh'.format(self.host_dir)

@@ -21,6 +21,7 @@ from pyroute2 import IPRoute
 from itertools import chain
 from nsenter import Namespace
 from threading import Thread
+import netaddr
 
 flatten = lambda l: chain.from_iterable(l)
 
@@ -30,51 +31,6 @@ def ctn_exists(name):
 
 def img_exists(name):
     return name in [ctn['RepoTags'][0].split(':')[0] for ctn in dckr.images() if ctn['RepoTags'] != None]
-
-
-class docker_netns(object):
-    def __init__(self, name):
-        pid = int(dckr.inspect_container(name)['State']['Pid'])
-        if pid == 0:
-            raise Exception('no container named {0}'.format(name))
-        self.pid = pid
-
-    def __enter__(self):
-        pid = self.pid
-        if not os.path.exists('/var/run/netns'):
-            os.mkdir('/var/run/netns')
-        os.symlink('/proc/{0}/ns/net'.format(pid), '/var/run/netns/{0}'.format(pid))
-        return str(pid)
-
-    def __exit__(self, type, value, traceback):
-        pid = self.pid
-        os.unlink('/var/run/netns/{0}'.format(pid))
-
-
-def connect_ctn_to_br(ctn, brname):
-    with docker_netns(ctn) as pid:
-        ip = IPRoute()
-        br = ip.link_lookup(ifname=brname)
-        if len(br) == 0:
-            ip.link_create(ifname=brname, kind='bridge')
-            br = ip.link_lookup(ifname=brname)
-        br = br[0]
-        ip.link('set', index=br, state='up')
-
-        ifs = ip.link_lookup(ifname=ctn)
-        if len(ifs) > 0:
-           ip.link_remove(ifs[0])
-
-        ip.link_create(ifname=ctn, kind='veth', peer=pid)
-        host = ip.link_lookup(ifname=ctn)[0]
-        ip.link('set', index=host, master=br)
-        ip.link('set', index=host, state='up')
-        guest = ip.link_lookup(ifname=pid)[0]
-        ip.link('set', index=guest, net_ns_fd=pid)
-        with Namespace(pid, 'net'):
-            ip = IPRoute()
-            ip.link('set', index=guest, ifname='eth1')
-            ip.link('set', index=guest, state='up')
 
 
 class Container(object):
@@ -123,20 +79,84 @@ class Container(object):
                 if 'stream' in line:
                     print line['stream'].strip()
 
+    def get_ipv4_addresses(self):
+        if 'local-address' in self.conf:
+            local_addr = self.conf['local-address']
+            if '/' in local_addr:
+                local_addr = local_addr.split('/')[0]
+            return [local_addr]
+        raise NotImplementedError()
+
     def run(self, brname='', rm=True):
 
         if rm and ctn_exists(self.name):
             print 'remove container:', self.name
             dckr.remove_container(self.name, force=True)
 
-        config = dckr.create_host_config(binds=['{0}:{1}'.format(os.path.abspath(self.host_dir), self.guest_dir)],
-                                         privileged=True)
+        host_config = dckr.create_host_config(
+            binds=['{0}:{1}'.format(os.path.abspath(self.host_dir), self.guest_dir)],
+            privileged=True,
+            network_mode='bridge',
+            cap_add=['NET_ADMIN']
+        )
         ctn = dckr.create_container(image=self.image, entrypoint='bash', detach=True, name=self.name,
-                                    stdin_open=True, volumes=[self.guest_dir], host_config=config)
-        dckr.start(container=self.name)
-        if brname != '':
-            connect_ctn_to_br(self.name, brname)
+                                    stdin_open=True, volumes=[self.guest_dir], host_config=host_config)
         self.ctn_id = ctn['Id']
+
+        ipv4_addresses = self.get_ipv4_addresses()
+
+        net_id = None
+        for network in dckr.networks(names=[brname]):
+            net_id = network['Id']
+            if not 'IPAM' in network:
+                print('can\'t verify if container\'s IP addresses '
+                      'are valid for network {}: missing IPAM'.format(brname))
+                break
+            ipam = network['IPAM']
+
+            if not 'Config' in ipam:
+                print('can\'t verify if container\'s IP addresses '
+                      'are valid for network {}: missing IPAM.Config'.format(brname))
+                break
+
+            ip_ok = False
+            for ip in ipv4_addresses:
+                for item in ipam['Config']:
+                    if not 'Subnet' in item:
+                        continue
+                    subnet = item['Subnet']
+                    ip_ok = netaddr.IPAddress(ip) in netaddr.IPNetwork(subnet)
+                if not ip_ok:
+                    raise Exception('the container\'s IP address {} is not valid for network {} '
+                                    'since it\'s not part of any of its subnets'.format(
+                                        ip, brname
+                                    )
+                                )
+            break
+
+        if net_id is None:
+            print 'network "{}" not found!'.format(brname)
+            return
+
+        dckr.connect_container_to_network(self.ctn_id, net_id, ipv4_address=ipv4_addresses[0])
+        dckr.start(container=self.name)
+
+        if len(ipv4_addresses) > 1:
+
+            # get the interface used by the first IP address already added by Docker
+            dev = None
+            exec_cmd = dckr.exec_create(self.ctn_id, 'ip addr', privileged=True)
+            res = dckr.exec_start(exec_cmd['Id'])
+            for line in res.split('\n'):
+                if ipv4_addresses[0] in line:
+                    dev = line.split(' ')[-1].strip()
+            if not dev:
+                dev = "eth0"
+
+            for ip in ipv4_addresses[1:]:
+                exec_cmd = dckr.exec_create(self.ctn_id, "ip addr add {} dev {}".format(ip, dev),
+                                            privileged=True)
+                dckr.exec_start(exec_cmd['Id'])
 
         return ctn
 
@@ -145,7 +165,10 @@ class Container(object):
             for stat in dckr.stats(self.ctn_id, decode=True):
                 cpu_percentage = 0.0
                 prev_cpu = stat['precpu_stats']['cpu_usage']['total_usage']
-                prev_system = stat['precpu_stats']['system_cpu_usage']
+                if 'system_cpu_usage' in stat['precpu_stats']:
+                    prev_system = stat['precpu_stats']['system_cpu_usage']
+                else:
+                    prev_system = 0
                 cpu = stat['cpu_stats']['cpu_usage']['total_usage']
                 system = stat['cpu_stats']['system_cpu_usage']
                 cpu_num = len(stat['cpu_stats']['cpu_usage']['percpu_usage'])

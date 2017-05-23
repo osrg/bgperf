@@ -22,6 +22,12 @@ def rm_line():
 
 
 class Tester(ExaBGP):
+    def get_ipv4_addresses(self):
+        res = []
+        peers = self.conf.get('tester', {}).values()
+        for p in peers:
+            res.append(p['local-address'].split('/')[0])
+        return res
 
     def run(self, conf, target, brname=''):
         super(Tester, self).run(brname)
@@ -51,9 +57,6 @@ ulimit -n 65536''']
 exabgp.daemon.daemonize=true \
 exabgp.daemon.user=root \
 exabgp {0}/{1}.conf'''.format(self.guest_dir, p['router-id']))
-
-        for p in peers:
-            startup.append('ip a add {0} dev eth1'.format(p['local-address']))
 
         filename = '{0}/start.sh'.format(self.host_dir)
         with open(filename, 'w') as f:

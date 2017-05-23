@@ -169,7 +169,6 @@ return true;
 
         startup = '''#!/bin/bash
 ulimit -n 65536
-ip a add {0} dev eth1
 bird -c {1}/{2} 
 '''.format(conf['target']['local-address'], self.guest_dir, self.config_name)
         filename = '{0}/start.sh'.format(self.host_dir)
