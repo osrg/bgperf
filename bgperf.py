@@ -283,6 +283,9 @@ def gen_conf(args):
         'single-table': args.single_table,
     }
 
+    if args.target_config_file:
+        conf['target']['config_path'] = args.target_config_file
+
     conf['monitor'] = {
         'as': 1001,
         'router-id': '10.10.0.2',
@@ -384,34 +387,32 @@ if __name__ == '__main__':
     parser_update.add_argument('-n', '--no-cache', action='store_true')
     parser_update.set_defaults(func=update)
 
+    def add_gen_conf_args(parser):
+        parser.add_argument('-n', '--neighbor-num', default=100, type=int)
+        parser.add_argument('-p', '--prefix-num', default=100, type=int)
+        parser.add_argument('-l', '--filter-type', choices=['in', 'out'], default='in')
+        parser.add_argument('-a', '--as-path-list-num', default=0, type=int)
+        parser.add_argument('-e', '--prefix-list-num', default=0, type=int)
+        parser.add_argument('-c', '--community-list-num', default=0, type=int)
+        parser.add_argument('-x', '--ext-community-list-num', default=0, type=int)
+        parser.add_argument('-s', '--single-table', action='store_true')
+        parser.add_argument('--target-config-file', type=str,
+                            help='target BGP daemon\'s configuration file')
+
     parser_bench = s.add_parser('bench', help='run benchmarks')
     parser_bench.add_argument('-t', '--target', choices=['gobgp', 'bird', 'quagga'], default='gobgp')
     parser_bench.add_argument('-i', '--image', help='specify custom docker image')
     parser_bench.add_argument('--bridge-name', help='Docker bridge name; this is the name given by \'docker network ls\'')
     parser_bench.add_argument('-r', '--repeat', action='store_true', help='use existing tester/monitor container')
     parser_bench.add_argument('-f', '--file', metavar='CONFIG_FILE')
-    parser_bench.add_argument('-n', '--neighbor-num', default=100, type=int)
-    parser_bench.add_argument('-p', '--prefix-num', default=100, type=int)
-    parser_bench.add_argument('-l', '--filter-type', choices=['in', 'out'], default='in')
-    parser_bench.add_argument('-a', '--as-path-list-num', default=0, type=int)
-    parser_bench.add_argument('-e', '--prefix-list-num', default=0, type=int)
-    parser_bench.add_argument('-c', '--community-list-num', default=0, type=int)
-    parser_bench.add_argument('-x', '--ext-community-list-num', default=0, type=int)
     parser_bench.add_argument('-g', '--cooling', default=0, type=int)
     parser_bench.add_argument('-o', '--output', metavar='STAT_FILE')
-    parser_bench.add_argument('-s', '--single-table', action='store_true')
+    add_gen_conf_args(parser_bench)
     parser_bench.set_defaults(func=bench)
 
     parser_config = s.add_parser('config', help='generate config')
     parser_config.add_argument('-o', '--output', default='bgperf.yml', type=str)
-    parser_config.add_argument('-n', '--neighbor-num', default=100, type=int)
-    parser_config.add_argument('-p', '--prefix-num', default=100, type=int)
-    parser_config.add_argument('-l', '--filter-type', choices=['in', 'out'], default='in')
-    parser_config.add_argument('-a', '--as-path-list-num', default=0, type=int)
-    parser_config.add_argument('-e', '--prefix-list-num', default=0, type=int)
-    parser_config.add_argument('-c', '--community-list-num', default=0, type=int)
-    parser_config.add_argument('-x', '--ext-community-list-num', default=0, type=int)
-    parser_config.add_argument('-s', '--single-table', action='store_true')
+    add_gen_conf_args(parser_config)
     parser_config.set_defaults(func=config)
 
 
