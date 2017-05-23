@@ -22,19 +22,20 @@ $ cat /tmp/bgperf/scenario.yaml
     def gen_paths(num):
         return list('{0}/32'.format(ip) for ip in islice(it, num))
 %>
+local_prefix: 10.10.0.0/24
 monitor:
   as: 1001
   check-points: [1000]
-  local-address: 10.10.0.2/16
+  local-address: 10.10.0.2
   router-id: 10.10.0.2
-target: {as: 1000, local-address: 10.10.0.1/16, router-id: 10.10.0.1}
+target: {as: 1000, local-address: 10.10.0.1, router-id: 10.10.0.1}
 testers:
 - name: mrt-injector
   type: mrt
   tester:
     10.10.0.200:
       as: 1200
-      local-address: 10.10.0.200/16
+      local-address: 10.10.0.200
       router-id: 10.10.0.200
       mrt-file: /path/to/mrt/file
       only-best: true # only inject best path to the tester router (recommended to set this true)
@@ -44,12 +45,12 @@ testers:
   tester:
     10.10.0.10:
       as: 1010
-      local-address: 10.10.0.10/16
+      local-address: 10.10.0.10
       paths: ${gen_paths(100)}
       router-id: 10.10.0.10
     10.10.0.100:
       as: 1100
-      local-address: 10.10.0.100/16
+      local-address: 10.10.0.100
       paths: ${gen_paths(100)}
       router-id: 10.10.0.100
 ```

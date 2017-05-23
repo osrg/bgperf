@@ -33,18 +33,20 @@ RUN go install github.com/osrg/gobgp/gobgp
         super(GoBGP, cls).build_image(force, tag, nocache)
 
 
-    def write_config(self, conf, name='gobgpd.conf'):
-        if self.use_existing_config(name):
-            return
+class GoBGPTarget(GoBGP, Target):
+
+    CONFIG_FILE_NAME = 'gobgpd.conf'
+
+    def write_config(self, scenario_global_conf):
 
         config = {}
         config['global'] = {
             'config': {
-                'as': conf['target']['as'],
-                'router-id': conf['target']['router-id']
+                'as': self.conf['as'],
+                'router-id': self.conf['router-id']
             },
         }
-        if 'policy' in conf:
+        if 'policy' in scenario_global_conf:
             config['policy-definitions'] = []
             config['defined-sets'] = {
                     'prefix-sets': [],
@@ -54,7 +56,7 @@ RUN go install github.com/osrg/gobgp/gobgp
                         'ext-community-sets': [],
                     },
             }
-            for k, v in conf['policy'].iteritems():
+            for k, v in scenario_global_conf['policy'].iteritems():
                 conditions = {
                     'bgp-conditions': {},
                 }
@@ -92,8 +94,8 @@ RUN go install github.com/osrg/gobgp/gobgp
 
 
         def gen_neighbor_config(n):
-            c = {'config': {'neighbor-address': n['local-address'].split('/')[0], 'peer-as': n['as']},
-                 'transport': {'config': {'local-address': conf['target']['local-address'].split('/')[0]}},
+            c = {'config': {'neighbor-address': n['local-address'], 'peer-as': n['as']},
+                 'transport': {'config': {'local-address': self.conf['local-address']}},
                  'route-server': {'config': {'route-server-client': True}}}
             if 'filter' in n:
                 a = {}
@@ -106,26 +108,16 @@ RUN go install github.com/osrg/gobgp/gobgp
                 c['apply-policy'] = {'config': a}
             return c
 
-        config['neighbors'] = [gen_neighbor_config(n) for n in list(flatten(t.get('tester', {}).values() for t in conf['testers'])) + [conf['monitor']]]
-        with open('{0}/{1}'.format(self.host_dir, name), 'w') as f:
+        config['neighbors'] = [gen_neighbor_config(n) for n in list(flatten(t.get('tester', {}).values() for t in scenario_global_conf['testers'])) + [scenario_global_conf['monitor']]]
+        with open('{0}/{1}'.format(self.host_dir, self.CONFIG_FILE_NAME), 'w') as f:
             f.write(yaml.dump(config, default_flow_style=False))
-        self.config_name = name
 
-    def run(self, conf, brname=''):
-        ctn = super(GoBGP, self).run(brname)
-
-        if self.config_name == None:
-            self.write_config(conf)
-
-        startup = '''#!/bin/bash
-ulimit -n 65536
-gobgpd -t yaml -f {1}/{2} -l {3} > {1}/gobgpd.log 2>&1
-'''.format(conf['target']['local-address'], self.guest_dir, self.config_name, 'info')
-        filename = '{0}/start.sh'.format(self.host_dir)
-        with open(filename, 'w') as f:
-            f.write(startup)
-        os.chmod(filename, 0777)
-        i = dckr.exec_create(container=self.name, cmd='{0}/start.sh'.format(self.guest_dir))
-        dckr.exec_start(i['Id'], detach=True, socket=True)
-
-        return ctn
+    def get_startup_cmd(self):
+        return '\n'.join(
+            ['#!/bin/bash',
+             'ulimit -n 65536',
+             'gobgpd -t yaml -f {guest_dir}/{config_file_name} -l {debug_level} > {guest_dir}/gobgpd.log 2>&1']
+        ).format(
+            guest_dir=self.guest_dir,
+            config_file_name=self.CONFIG_FILE_NAME,
+            debug_level='info')

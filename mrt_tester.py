@@ -21,8 +21,8 @@ import shutil
 
 class MRTTester(GoBGP):
 
-    def run(self, conf, target, brname=''):
-        ctn = super(GoBGP, self).run(brname)
+    def run(self, conf, target, dckr_net_name=''):
+        ctn = super(GoBGP, self).run(dckr_net_name)
 
         conf = conf['tester'].values()[0]
 
@@ -65,7 +65,7 @@ gobgpd -t yaml -f {1}/{2} -l {3} > {1}/gobgpd.log 2>&1
 
         config['neighbors'] = [{
             'config': {
-                'neighbor-address': target['local-address'].split('/')[0],
+                'neighbor-address': target['local-address'],
                 'peer-as': target['as'],
             },
         }]

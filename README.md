@@ -98,3 +98,5 @@ run gobgp
 elapsed: 23sec, cpu: 0.02%, mem: 1.26GB
 elapsed time: 18sec
 ```
+
+For a comprehensive list of options, run `sudo ./bgperf.py bench --help`.

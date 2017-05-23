@@ -32,5 +32,5 @@ RUN ln -s /root/exabgp /exabgp
 '''.format(checkout)
         super(ExaBGP, cls).build_image(force, tag, nocache)
 
-    def run(self, brname=''):
-        return super(ExaBGP, self).run(brname)
+    def run(self, dckr_net_name=''):
+        return super(ExaBGP, self).run(dckr_net_name)

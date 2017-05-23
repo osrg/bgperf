@@ -23,8 +23,8 @@ import time
 
 class Monitor(GoBGP):
 
-    def run(self, conf, brname=''):
-        ctn = super(GoBGP, self).run(brname)
+    def run(self, conf, dckr_net_name=''):
+        ctn = super(GoBGP, self).run(dckr_net_name)
         config = {}
         config['global'] = {
             'config': {
@@ -32,9 +32,9 @@ class Monitor(GoBGP):
                 'router-id': conf['monitor']['router-id'],
             },
         }
-        config ['neighbors'] = [{'config': {'neighbor-address': conf['target']['local-address'].split('/')[0],
+        config ['neighbors'] = [{'config': {'neighbor-address': conf['target']['local-address'],
                                             'peer-as': conf['target']['as']},
-                                 'transport': {'config': {'local-address': conf['monitor']['local-address'].split('/')[0]}},
+                                 'transport': {'config': {'local-address': conf['monitor']['local-address']}},
                                  'timers': {'config': {'connect-retry': 10}}}]
         with open('{0}/{1}'.format(self.host_dir, 'gobgpd.conf'), 'w') as f:
             f.write(yaml.dump(config))
@@ -51,10 +51,6 @@ gobgpd -t yaml -f {1}/{2} -l {3} > {1}/gobgpd.log 2>&1
         dckr.exec_start(i['Id'], detach=True, socket=True)
         self.config = conf
         return ctn
-
-    def local(self, cmd, stream=False):
-        i = dckr.exec_create(container=self.name, cmd=cmd)
-        return dckr.exec_start(i['Id'], stream=stream)
 
     def wait_established(self, neighbor):
         while True:

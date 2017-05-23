@@ -17,11 +17,10 @@ from settings import dckr
 import io
 import os
 import yaml
-from pyroute2 import IPRoute
 from itertools import chain
-from nsenter import Namespace
 from threading import Thread
 import netaddr
+import sys
 
 flatten = lambda l: chain.from_iterable(l)
 
@@ -44,15 +43,6 @@ class Container(object):
         if not os.path.exists(host_dir):
             os.makedirs(host_dir)
             os.chmod(host_dir, 0777)
-
-    def use_existing_config(self, name):
-        if 'config_path' in self.conf:
-            with open('{0}/{1}'.format(self.host_dir, name), 'w') as f:
-                with open(self.conf['config_path'], 'r') as orig:
-                    f.write(orig.read())
-            self.config_name = name
-            return True
-        return False
 
     @classmethod
     def build_image(cls, force, tag, nocache=False):
@@ -82,12 +72,10 @@ class Container(object):
     def get_ipv4_addresses(self):
         if 'local-address' in self.conf:
             local_addr = self.conf['local-address']
-            if '/' in local_addr:
-                local_addr = local_addr.split('/')[0]
             return [local_addr]
         raise NotImplementedError()
 
-    def run(self, brname='', rm=True):
+    def run(self, dckr_net_name='', rm=True):
 
         if rm and ctn_exists(self.name):
             print 'remove container:', self.name
@@ -106,36 +94,41 @@ class Container(object):
         ipv4_addresses = self.get_ipv4_addresses()
 
         net_id = None
-        for network in dckr.networks(names=[brname]):
+        for network in dckr.networks(names=[dckr_net_name]):
+            if network['Name'] != dckr_net_name:
+                continue
+
             net_id = network['Id']
             if not 'IPAM' in network:
                 print('can\'t verify if container\'s IP addresses '
-                      'are valid for network {}: missing IPAM'.format(brname))
+                      'are valid for Docker network {}: missing IPAM'.format(dckr_net_name))
                 break
             ipam = network['IPAM']
 
             if not 'Config' in ipam:
                 print('can\'t verify if container\'s IP addresses '
-                      'are valid for network {}: missing IPAM.Config'.format(brname))
+                      'are valid for Docker network {}: missing IPAM.Config'.format(dckr_net_name))
                 break
 
             ip_ok = False
+            network_subnets = [item['Subnet'] for item in ipam['Config'] if 'Subnet' in item]
             for ip in ipv4_addresses:
-                for item in ipam['Config']:
-                    if not 'Subnet' in item:
-                        continue
-                    subnet = item['Subnet']
+                for subnet in network_subnets:
                     ip_ok = netaddr.IPAddress(ip) in netaddr.IPNetwork(subnet)
+
                 if not ip_ok:
-                    raise Exception('the container\'s IP address {} is not valid for network {} '
-                                    'since it\'s not part of any of its subnets'.format(
-                                        ip, brname
-                                    )
-                                )
+                    print('the container\'s IP address {} is not valid for Docker network {} '
+                          'since it\'s not part of any of its subnets ({})'.format(
+                              ip, dckr_net_name, ', '.join(network_subnets)))
+                    print('Please consider removing the Docket network {net} '
+                          'to allow bgperf to create it again using the '
+                          'expected subnet:\n'
+                          '  docker network rm {net}'.format(net=dckr_net_name))
+                    sys.exit(1)
             break
 
         if net_id is None:
-            print 'network "{}" not found!'.format(brname)
+            print 'Docker network "{}" not found!'.format(dckr_net_name)
             return
 
         dckr.connect_container_to_network(self.ctn_id, net_id, ipv4_address=ipv4_addresses[0])
@@ -145,8 +138,7 @@ class Container(object):
 
             # get the interface used by the first IP address already added by Docker
             dev = None
-            exec_cmd = dckr.exec_create(self.ctn_id, 'ip addr', privileged=True)
-            res = dckr.exec_start(exec_cmd['Id'])
+            res = self.local('ip addr')
             for line in res.split('\n'):
                 if ipv4_addresses[0] in line:
                     dev = line.split(' ')[-1].strip()
@@ -154,9 +146,7 @@ class Container(object):
                 dev = "eth0"
 
             for ip in ipv4_addresses[1:]:
-                exec_cmd = dckr.exec_create(self.ctn_id, "ip addr add {} dev {}".format(ip, dev),
-                                            privileged=True)
-                dckr.exec_start(exec_cmd['Id'])
+                self.local('ip addr add {} dev {}'.format(ip, dev))
 
         return ctn
 
@@ -181,3 +171,43 @@ class Container(object):
         t = Thread(target=stats)
         t.daemon = True
         t.start()
+
+    def local(self, cmd, stream=False):
+        i = dckr.exec_create(container=self.name, cmd=cmd)
+        return dckr.exec_start(i['Id'], stream=stream)
+
+
+class Target(Container):
+
+    CONFIG_FILE_NAME = None
+
+    def write_config(self, scenario_global_conf):
+        raise NotImplementedError()
+
+    def use_existing_config(self):
+        if 'config_path' in self.conf:
+            with open('{0}/{1}'.format(self.host_dir, self.CONFIG_FILE_NAME), 'w') as f:
+                with open(self.conf['config_path'], 'r') as orig:
+                    f.write(orig.read())
+            return True
+        return False
+
+    def get_startup_cmd(self):
+        raise NotImplementedError()
+
+    def run(self, scenario_global_conf, dckr_net_name=''):
+        ctn = super(Target, self).run(dckr_net_name)
+
+        if not self.use_existing_config():
+            self.write_config(scenario_global_conf)
+
+        startup_content = self.get_startup_cmd()
+
+        filename = '{0}/start.sh'.format(self.host_dir)
+        with open(filename, 'w') as f:
+            f.write(startup_content)
+        os.chmod(filename, 0777)
+
+        i = dckr.exec_create(container=self.name, cmd='{0}/start.sh'.format(self.guest_dir))
+        dckr.exec_start(i['Id'], detach=True, socket=True)
+        return ctn

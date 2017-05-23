@@ -35,18 +35,21 @@ RUN ldconfig
 '''.format(checkout)
         super(Quagga, cls).build_image(force, tag, nocache)
 
-    def write_config(self, conf, name='bgpd.conf'):
-        if self.use_existing_config(name):
-            return
+
+class QuaggaTarget(Quagga, Target):
+
+    CONFIG_FILE_NAME = 'bgpd.conf'
+
+    def write_config(self, scenario_global_conf):
 
         config = """hostname bgpd
 password zebra
 router bgp {0}
 bgp router-id {1}
-""".format(conf['target']['as'], conf['target']['router-id'])
+""".format(self.conf['as'], self.conf['router-id'])
 
         def gen_neighbor_config(n):
-            local_addr = n['local-address'].split('/')[0]
+            local_addr = n['local-address']
             c = """neighbor {0} remote-as {1}
 neighbor {0} advertisement-interval 1
 neighbor {0} route-server-client
@@ -57,14 +60,14 @@ neighbor {0} timers 30 90
                     c += 'neighbor {0} route-map {1} export\n'.format(local_addr, p)
             return c
 
-        with open('{0}/{1}'.format(self.host_dir, name), 'w') as f:
+        with open('{0}/{1}'.format(self.host_dir, self.CONFIG_FILE_NAME), 'w') as f:
             f.write(config)
-            for n in list(flatten(t.get('tester', {}).values() for t in conf['testers'])) + [conf['monitor']]:
+            for n in scenario_global_conf['tester'].values() + [scenario_global_conf['monitor']]:
                 f.write(gen_neighbor_config(n))
 
-            if 'policy' in conf:
+            if 'policy' in scenario_global_conf:
                 seq = 10
-                for k, v in conf['policy'].iteritems():
+                for k, v in scenario_global_conf['policy'].iteritems():
                     match_info = []
                     for i, match in enumerate(v['match']):
                         n = '{0}_match_{1}'.format(k, i)
@@ -96,23 +99,11 @@ neighbor {0} timers 30 90
 
                     seq += 10
 
-        self.config_name = name
-
-    def run(self, conf, brname=''):
-        ctn = super(Quagga, self).run(brname)
-
-        if self.config_name == None:
-            self.write_config(conf)
-
-        startup = '''#!/bin/bash
-ulimit -n 65536
-bgpd -u root -f {1}/{2}
-'''.format(conf['target']['local-address'], self.guest_dir, self.config_name)
-        filename = '{0}/start.sh'.format(self.host_dir)
-        with open(filename, 'w') as f:
-            f.write(startup)
-        os.chmod(filename, 0777)
-        i = dckr.exec_create(container=self.name, cmd='{0}/start.sh'.format(self.guest_dir))
-        dckr.exec_inspect(i['Id'])
-        dckr.exec_start(i['Id'], detach=True)
-        return ctn
+    def get_startup_cmd(self):
+        return '\n'.join(
+            ['#!/bin/bash',
+             'ulimit -n 65536',
+             'bgpd -u root -f {guest_dir}/{config_file_name}']
+        ).format(
+            guest_dir=self.guest_dir,
+            config_file_name=self.CONFIG_FILE_NAME)

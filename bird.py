@@ -33,17 +33,18 @@ RUN cd bird && git checkout {0} && autoreconf -i && ./configure && make && make 
         super(BIRD, cls).build_image(force, tag, nocache)
 
 
-    def write_config(self, conf, name='bird.conf'):
-        if self.use_existing_config(name):
-            return
+class BIRDTarget(BIRD, Target):
 
+    CONFIG_FILE_NAME = 'bird.conf'
+
+    def write_config(self, scenario_global_conf):
         config = '''router id {0};
 listen bgp port 179;
 protocol device {{ }}
 protocol direct {{ disabled; }}
 protocol kernel {{ disabled; }}
 table master{1};
-'''.format(conf['target']['router-id'], ' sorted' if conf['target']['single-table'] else '')
+'''.format(self.conf['router-id'], ' sorted' if self.conf['single-table'] else '')
 
         def gen_filter_assignment(n):
             if 'filter' in n:
@@ -70,7 +71,7 @@ protocol pipe pipe_{0} {{
     mode transparent;
     peer table table_{0};
 {1}
-}}'''.format(n['as'], gen_filter_assignment(n)) if not conf['target']['single-table'] else '') + '''protocol bgp bgp_{0} {{
+}}'''.format(n['as'], gen_filter_assignment(n)) if not self.conf['single-table'] else '') + '''protocol bgp bgp_{0} {{
     local as {1};
     neighbor {2} as {0};
     {3};
@@ -78,7 +79,7 @@ protocol pipe pipe_{0} {{
     export all;
     rs client;
 }}
-'''.format(n['as'], conf['target']['as'], n['local-address'].split('/')[0], 'secondary' if conf['target']['single-table'] else 'table table_{0}'.format(n['as']))
+'''.format(n['as'], self.conf['as'], n['local-address'], 'secondary' if self.conf['single-table'] else 'table table_{0}'.format(n['as']))
             return n1 + n2
 
         def gen_prefix_filter(name, match):
@@ -136,11 +137,11 @@ return true;
             c.append('}')
             return '\n'.join(c) + '\n'
 
-        with open('{0}/{1}'.format(self.host_dir, name), 'w') as f:
+        with open('{0}/{1}'.format(self.host_dir, self.CONFIG_FILE_NAME), 'w') as f:
             f.write(config)
 
-            if 'policy' in conf:
-                for k, v in conf['policy'].iteritems():
+            if 'policy' in scenario_global_conf:
+                for k, v in scenario_global_conf['policy'].iteritems():
                     match_info = []
                     for i, match in enumerate(v['match']):
                         n = '{0}_match_{1}'.format(k, i)
@@ -155,26 +156,15 @@ return true;
                         match_info.append((match['type'], n))
                     f.write(gen_filter(k, match_info))
 
-            for n in sorted(list(flatten(t.get('tester', {}).values() for t in conf['testers'])) + [conf['monitor']], key=lambda n: n['as']):
+            for n in sorted(list(flatten(t.get('tester', {}).values() for t in scenario_global_conf['testers'])) + [scenario_global_conf['monitor']], key=lambda n: n['as']):
                 f.write(gen_neighbor_config(n))
             f.flush()
-        self.config_name = name
 
-
-    def run(self, conf, brname=''):
-        ctn = super(BIRD, self).run(brname)
-
-        if self.config_name == None:
-            self.write_config(conf)
-
-        startup = '''#!/bin/bash
-ulimit -n 65536
-bird -c {1}/{2} 
-'''.format(conf['target']['local-address'], self.guest_dir, self.config_name)
-        filename = '{0}/start.sh'.format(self.host_dir)
-        with open(filename, 'w') as f:
-            f.write(startup)
-        os.chmod(filename, 0777)
-        i = dckr.exec_create(container=self.name, cmd='{0}/start.sh'.format(self.guest_dir))
-        dckr.exec_start(i['Id'], detach=True, socket=True)
-        return ctn
+    def get_startup_cmd(self):
+        return '\n'.join(
+            ['#!/bin/bash',
+             'ulimit -n 65536',
+             'bird -c {guest_dir}/{config_file_name}']
+        ).format(
+            guest_dir=self.guest_dir,
+            config_file_name=self.CONFIG_FILE_NAME)
