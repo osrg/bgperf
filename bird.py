@@ -152,7 +152,7 @@ return true;
                         match_info.append((match['type'], n))
                     f.write(gen_filter(k, match_info))
 
-            for n in sorted(conf['tester'].values() + [conf['monitor']], key=lambda n: n['as']):
+            for n in sorted(list(flatten(t.get('tester', {}).values() for t in conf['testers'])) + [conf['monitor']], key=lambda n: n['as']):
                 f.write(gen_neighbor_config(n))
             f.flush()
         self.config_name = name
