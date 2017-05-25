@@ -32,9 +32,9 @@ from base import *
 from exabgp import ExaBGP
 from gobgp import GoBGP, GoBGPTarget
 from bird import BIRD, BIRDTarget
-from quagga import Quagga
-from tester import Tester
-from mrt_tester import MRTTester
+from quagga import Quagga, QuaggaTarget
+from tester import ExaBGPTester
+from mrt_tester import GoBGPMRTTester
 from monitor import Monitor
 from settings import dckr
 from Queue import Queue
@@ -112,7 +112,22 @@ def bench(args):
     config_dir = '{0}/{1}'.format(args.dir, args.bench_name)
     dckr_net_name = args.docker_network_name or args.bench_name + '-br'
 
+    for target_class in [BIRDTarget, GoBGPTarget, QuaggaTarget]:
+        if ctn_exists(target_class.CONTAINER_NAME):
+            print 'removing target container', target_class.CONTAINER_NAME
+            dckr.remove_container(target_class.CONTAINER_NAME, force=True)
+
     if not args.repeat:
+        if ctn_exists(Monitor.CONTAINER_NAME):
+            print 'removing monitor container', Monitor.CONTAINER_NAME
+            dckr.remove_container(Monitor.CONTAINER_NAME, force=True)
+
+        for ctn_name in get_ctn_names():
+            if ctn_name.startswith(ExaBGPTester.CONTAINER_NAME_PREFIX) or \
+                ctn_name.startswith(GoBGPMRTTester.CONTAINER_NAME_PREFIX):
+                print 'removing tester container', ctn_name
+                dckr.remove_container(ctn_name, force=True)
+
         if os.path.exists(config_dir):
             shutil.rmtree(config_dir)
 
@@ -139,14 +154,14 @@ def bench(args):
         ipam = IPAMConfig(pool_configs=[IPAMPool(subnet=subnet)])
         network = dckr.create_network(dckr_net_name, driver='bridge', ipam=ipam)
 
-    num_tester = sum(len(t.get('tester', [])) for t in conf.get('testers', []))
+    num_tester = sum(len(t.get('neighbors', [])) for t in conf.get('testers', []))
     if num_tester > gc_thresh3():
         print 'gc_thresh3({0}) is lower than the number of peer({1})'.format(gc_thresh3(), num_tester)
         print 'type next to increase the value'
         print '$ echo 16384 | sudo tee /proc/sys/net/ipv4/neigh/default/gc_thresh3'
 
     print 'run monitor'
-    m = Monitor('monitor', config_dir+'/monitor', conf['monitor'])
+    m = Monitor(config_dir+'/monitor', conf['monitor'])
     m.run(conf, dckr_net_name)
 
     is_remote = True if 'remote' in conf['target'] and conf['target']['remote'] else False
@@ -248,13 +263,13 @@ def bench(args):
         elif args.target == 'bird':
             target_class = BIRDTarget
         elif args.target == 'quagga':
-            target_class = Quagga
+            target_class = QuaggaTarget
 
         print 'run', args.target
         if args.image:
-            target = target_class(args.target, '{0}/{1}'.format(config_dir, args.target), conf['target'], image=args.image)
+            target = target_class('{0}/{1}'.format(config_dir, args.target), conf['target'], image=args.image)
         else:
-            target = target_class(args.target, '{0}/{1}'.format(config_dir, args.target), conf['target'])
+            target = target_class('{0}/{1}'.format(config_dir, args.target), conf['target'])
         target.run(conf, dckr_net_name)
 
     time.sleep(1)
@@ -263,7 +278,6 @@ def bench(args):
     m.wait_established(conf['target']['local-address'])
 
     if not args.repeat:
-        print 'run tester'
         for idx, tester in enumerate(conf['testers']):
             if 'name' not in tester:
                 name = 'tester{0}'.format(idx)
@@ -274,13 +288,15 @@ def bench(args):
             else:
                 tester_type = tester['type']
             if tester_type == 'normal':
-                t = Tester(name, config_dir+'/'+name, tester)
+                tester_class = ExaBGPTester
             elif tester_type == 'mrt':
-                t = MRTTester(name, config_dir+'/'+name, tester)
+                tester_class = GoBGPMRTTester
             else:
                 print 'invalid tester type:', tester_type
                 sys.exit(1)
-            t.run(tester, conf['target'], dckr_net_name)
+            t = tester_class(name, config_dir+'/'+name, tester)
+            print 'run tester', name, 'type', tester_type
+            t.run(conf['target'], dckr_net_name)
 
     start = datetime.datetime.now()
 
@@ -332,7 +348,7 @@ def bench(args):
                 cooling = 0
 
 def gen_conf(args):
-    neighbor = args.neighbor_num
+    neighbor_num = args.neighbor_num
     prefix = args.prefix_num
     as_path_list = args.as_path_list_num
     prefix_list = args.prefix_list_num
@@ -377,7 +393,7 @@ def gen_conf(args):
         'as': 1001,
         'router-id': str(monitor_router_id),
         'local-address': str(monitor_local_address),
-        'check-points': [prefix * neighbor],
+        'check-points': [prefix * neighbor_num],
     }
 
     offset = 0
@@ -428,17 +444,17 @@ def gen_conf(args):
         }
         assignment.append(name)
 
-    tester = {}
-    configured_tester_cnt = 0
-    for i in range(3, neighbor+3+2):
-        if configured_tester_cnt == neighbor:
+    neighbors = {}
+    configured_neighbors_cnt = 0
+    for i in range(3, neighbor_num+3+2):
+        if configured_neighbors_cnt == neighbor_num:
             break
         curr_ip = local_address_prefix.ip + i
         if curr_ip in [target_local_address, monitor_local_address]:
-            print('skipping tester with IP {} because it collides with target or monitor'.format(curr_ip))
+            print('skipping tester\'s neighbor with IP {} because it collides with target or monitor'.format(curr_ip))
             continue
         router_id = str(local_address_prefix.ip + i)
-        tester[router_id] = {
+        neighbors[router_id] = {
             'as': 1000 + i,
             'router-id': router_id,
             'local-address': router_id,
@@ -447,12 +463,12 @@ def gen_conf(args):
                 args.filter_type: assignment,
             },
         }
-        configured_tester_cnt += 1
+        configured_neighbors_cnt += 1
 
     conf['testers'] = [{
         'name': 'tester',
         'type': 'normal',
-        'tester': tester,
+        'neighbors': neighbors,
     }]
     return gen_mako_macro() + yaml.dump(conf, default_flow_style=False)
 

@@ -16,8 +16,12 @@
 from base import *
 
 class BIRD(Container):
-    def __init__(self, name, host_dir, conf, guest_dir='/root/config', image='bgperf/bird'):
-        super(BIRD, self).__init__(name, image, host_dir, guest_dir, conf)
+
+    CONTAINER_NAME = None
+    GUEST_DIR = '/root/config'
+
+    def __init__(self, host_dir, conf, image='bgperf/bird'):
+        super(BIRD, self).__init__(self.CONTAINER_NAME, image, host_dir, self.GUEST_DIR, conf)
 
     @classmethod
     def build_image(cls, force=False, tag='bgperf/bird', checkout='HEAD', nocache=False):
@@ -35,6 +39,7 @@ RUN cd bird && git checkout {0} && autoreconf -i && ./configure && make && make 
 
 class BIRDTarget(BIRD, Target):
 
+    CONTAINER_NAME = 'bgperf_bird_target'
     CONFIG_FILE_NAME = 'bird.conf'
 
     def write_config(self, scenario_global_conf):
@@ -156,7 +161,7 @@ return true;
                         match_info.append((match['type'], n))
                     f.write(gen_filter(k, match_info))
 
-            for n in sorted(list(flatten(t.get('tester', {}).values() for t in scenario_global_conf['testers'])) + [scenario_global_conf['monitor']], key=lambda n: n['as']):
+            for n in sorted(list(flatten(t.get('neighbors', {}).values() for t in scenario_global_conf['testers'])) + [scenario_global_conf['monitor']], key=lambda n: n['as']):
                 f.write(gen_neighbor_config(n))
             f.flush()
 

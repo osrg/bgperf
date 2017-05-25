@@ -69,7 +69,7 @@ monitor:
 target: {as: 1000, local-address: 10.10.0.1, router-id: 10.10.0.1}
 testers:
 - name: tester
-  tester:
+  neighbors:
     10.10.0.10:
       as: 1010
       filter:

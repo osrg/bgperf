@@ -23,6 +23,8 @@ import time
 
 class Monitor(GoBGP):
 
+    CONTAINER_NAME = 'bgperf_monitor'
+
     def run(self, conf, dckr_net_name=''):
         ctn = super(GoBGP, self).run(dckr_net_name)
         config = {}

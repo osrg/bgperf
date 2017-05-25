@@ -13,18 +13,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from base import Tester
 from gobgp import GoBGP
 import os
 import yaml
 from  settings import dckr
 import shutil
 
-class MRTTester(GoBGP):
+class GoBGPMRTTester(Tester, GoBGP):
 
-    def run(self, conf, target, dckr_net_name=''):
-        ctn = super(GoBGP, self).run(dckr_net_name)
+    CONTAINER_NAME_PREFIX = 'bgperf_gobgp_mrttester_'
 
-        conf = conf['tester'].values()[0]
+    def __init__(self, name, host_dir, conf, image='bgperf/gobgp'):
+        super(GoBGPMRTTester, self).__init__(name, host_dir, conf, image)
+
+    def configure_neighbors(self, target_conf):
+        conf = self.conf.get('neighbors', {}).values()[0]
 
         config = {
             'global': {
@@ -33,25 +37,31 @@ class MRTTester(GoBGP):
                     'router-id': conf['router-id'],
                 }
             },
+            'neighbors': [
+                {
+                    'config': {
+                        'neighbor-address': target_conf['local-address'],
+                        'peer-as': target_conf['as']
+                    }
+                }
+            ]
         }
 
         with open('{0}/{1}.conf'.format(self.host_dir, self.name), 'w') as f:
             f.write(yaml.dump(config, default_flow_style=False))
             self.config_name = '{0}.conf'.format(self.name)
 
-        startup = '''#!/bin/bash
-ulimit -n 65536
-gobgpd -t yaml -f {1}/{2} -l {3} > {1}/gobgpd.log 2>&1
-'''.format(conf['local-address'], self.guest_dir, self.config_name, 'info')
-        filename = '{0}/start.sh'.format(self.host_dir)
+    def get_startup_cmd(self):
+        conf = self.conf.get('neighbors', {}).values()[0]
 
-        with open(filename, 'w') as f:
-            f.write(startup)
-        os.chmod(filename, 0777)
-        i = dckr.exec_create(container=self.name, cmd='{0}/start.sh'.format(self.guest_dir))
-        dckr.exec_start(i['Id'], detach=True, socket=True)
         mrtfile = '{0}/{1}'.format(self.host_dir, os.path.basename(conf['mrt-file']))
         shutil.copyfile(conf['mrt-file'], mrtfile)
+
+        startup = '''#!/bin/bash
+ulimit -n 65536
+gobgpd -t yaml -f {1}/{2} -l {3} > {1}/gobgpd.log 2>&1 &
+'''.format(conf['local-address'], self.guest_dir, self.config_name, 'info')
+
         cmd = ['gobgp', 'mrt']
         if conf.get('only-best', False):
             cmd.append('--only-best')
@@ -60,20 +70,8 @@ gobgpd -t yaml -f {1}/{2} -l {3} > {1}/gobgpd.log 2>&1
             cmd.append(str(conf['count']))
         if 'skip' in conf:
             cmd.append(str(conf['skip']))
-        i = dckr.exec_create(container=self.name, cmd=cmd)
-        dckr.exec_start(i['Id'], detach=False, socket=True)
 
-        config['neighbors'] = [{
-            'config': {
-                'neighbor-address': target['local-address'],
-                'peer-as': target['as'],
-            },
-        }]
+        startup += '\n' + ' '.join(cmd)
 
-        with open('{0}/{1}.conf'.format(self.host_dir, self.name), 'w') as f:
-            f.write(yaml.dump(config, default_flow_style=False))
-
-        i = dckr.exec_create(container=self.name, cmd=['pkill', '-SIGHUP', 'gobgpd'])
-        dckr.exec_start(i['Id'], detach=False, socket=True)
-
-        return ctn
+        startup += '\n' + 'pkill -SIGHUP gobgpd'
+        return startup

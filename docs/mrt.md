@@ -32,7 +32,7 @@ target: {as: 1000, local-address: 10.10.0.1, router-id: 10.10.0.1}
 testers:
 - name: mrt-injector
   type: mrt
-  tester:
+  neighbors:
     10.10.0.200:
       as: 1200
       local-address: 10.10.0.200
@@ -42,7 +42,7 @@ testers:
       count: 1000 # number of routes to inject
       skip: 100 # number of routers to skip in the mrt file
 - name: tester
-  tester:
+  neighbors:
     10.10.0.10:
       as: 1010
       local-address: 10.10.0.10

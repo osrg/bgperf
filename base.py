@@ -24,12 +24,21 @@ import sys
 
 flatten = lambda l: chain.from_iterable(l)
 
+def get_ctn_names():
+    names = list(flatten(n['Names'] for n in dckr.containers(all=True)))
+    return [n[1:] if n[0] == '/' else n for n in names]
+
+
 def ctn_exists(name):
-    return '/{0}'.format(name) in list(flatten(n['Names'] for n in dckr.containers(all=True)))
+    return name in get_ctn_names()
 
 
 def img_exists(name):
     return name in [ctn['RepoTags'][0].split(':')[0] for ctn in dckr.images() if ctn['RepoTags'] != None]
+
+
+def rm_line():
+    print '\x1b[1A\x1b[2K\x1b[1D\x1b[1A'
 
 
 class Container(object):
@@ -87,6 +96,7 @@ class Container(object):
             network_mode='bridge',
             cap_add=['NET_ADMIN']
         )
+
         ctn = dckr.create_container(image=self.image, entrypoint='bash', detach=True, name=self.name,
                                     stdin_open=True, volumes=[self.guest_dir], host_config=host_config)
         self.ctn_id = ctn['Id']
@@ -172,9 +182,27 @@ class Container(object):
         t.daemon = True
         t.start()
 
-    def local(self, cmd, stream=False):
+    def local(self, cmd, stream=False, detach=False):
         i = dckr.exec_create(container=self.name, cmd=cmd)
-        return dckr.exec_start(i['Id'], stream=stream)
+        return dckr.exec_start(i['Id'], stream=stream, detach=detach)
+
+    def get_startup_cmd(self):
+        raise NotImplementedError()
+
+    def exec_startup_cmd(self, stream=False, detach=False):
+        startup_content = self.get_startup_cmd()
+
+        if not startup_content:
+            return
+
+        filename = '{0}/start.sh'.format(self.host_dir)
+        with open(filename, 'w') as f:
+            f.write(startup_content)
+        os.chmod(filename, 0777)
+
+        return self.local('{0}/start.sh'.format(self.guest_dir),
+                          detach=detach,
+                          stream=stream)
 
 
 class Target(Container):
@@ -192,22 +220,48 @@ class Target(Container):
             return True
         return False
 
-    def get_startup_cmd(self):
-        raise NotImplementedError()
-
     def run(self, scenario_global_conf, dckr_net_name=''):
         ctn = super(Target, self).run(dckr_net_name)
 
         if not self.use_existing_config():
             self.write_config(scenario_global_conf)
 
-        startup_content = self.get_startup_cmd()
+        self.exec_startup_cmd()
 
-        filename = '{0}/start.sh'.format(self.host_dir)
-        with open(filename, 'w') as f:
-            f.write(startup_content)
-        os.chmod(filename, 0777)
+        return ctn
 
-        i = dckr.exec_create(container=self.name, cmd='{0}/start.sh'.format(self.guest_dir))
-        dckr.exec_start(i['Id'], detach=True, socket=True)
+
+class Tester(Container):
+
+    CONTAINER_NAME_PREFIX = None
+
+    def __init__(self, name, host_dir, conf, image):
+        Container.__init__(self, self.CONTAINER_NAME_PREFIX + name, image, host_dir, self.GUEST_DIR, conf)
+
+    def get_ipv4_addresses(self):
+        res = []
+        peers = self.conf.get('neighbors', {}).values()
+        for p in peers:
+            res.append(p['local-address'])
+        return res
+
+    def configure_neighbors(self, target_conf):
+        raise NotImplementedError()
+
+    def run(self, target_conf, dckr_net_name):
+        ctn = super(Tester, self).run(dckr_net_name)
+
+        self.configure_neighbors(target_conf)
+
+        output = self.exec_startup_cmd(stream=True, detach=False)
+
+        cnt = 0
+        for lines in output:
+            for line in lines.strip().split('\n'):
+                cnt += 1
+                if cnt % 2 == 1:
+                    if cnt > 1:
+                        rm_line()
+                    print 'tester booting.. ({0}/{1})'.format(cnt/2 + 1, len(self.conf.get('neighbors', {}).values()))
+
         return ctn

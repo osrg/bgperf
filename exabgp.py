@@ -16,8 +16,11 @@
 from base import *
 
 class ExaBGP(Container):
-    def __init__(self, name, host_dir, conf, guest_dir='/root/config', image='bgperf/exabgp'):
-        super(ExaBGP, self).__init__(name, image, host_dir, guest_dir, conf)
+
+    GUEST_DIR = '/root/config'
+
+    def __init__(self, name, host_dir, conf, image='bgperf/exabgp'):
+        super(ExaBGP, self).__init__('bgperf_exabgp_' + name, image, host_dir, self.GUEST_DIR, conf)
 
     @classmethod
     def build_image(cls, force=False, tag='bgperf/exabgp', checkout='HEAD', nocache=False):
@@ -31,6 +34,3 @@ RUN git clone https://github.com/Exa-Networks/exabgp && \
 RUN ln -s /root/exabgp /exabgp
 '''.format(checkout)
         super(ExaBGP, cls).build_image(force, tag, nocache)
-
-    def run(self, dckr_net_name=''):
-        return super(ExaBGP, self).run(dckr_net_name)
