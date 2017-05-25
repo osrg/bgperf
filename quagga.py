@@ -56,7 +56,7 @@ neighbor {0} timers 30 90
 
         with open('{0}/{1}'.format(self.host_dir, name), 'w') as f:
             f.write(config)
-            for n in conf['tester'].values() + [conf['monitor']]:
+            for n in list(flatten(t.get('tester', {}).values() for t in conf['testers'])) + [conf['monitor']]:
                 f.write(gen_neighbor_config(n))
 
             if 'policy' in conf:
