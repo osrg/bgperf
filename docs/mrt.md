@@ -56,8 +56,44 @@ testers:
 ```
 
 By adding `type: mrt`, tester will be run in mrt mode.
-With this configuration, the mrt tester will inject 1000 routes taken from the
-MRT file with 100 offset to the target router.
+The MRT injector can be GoBGP (default) or ExaBGP, depending on the value set on `mrt_injector` (gobgp, exabgp).
+The `mrt-file` can be set both at tester level and at neighbor level: the file provided within the neighbor configuration has priority over the one set at tester level:
 
-As you can see, you can mix normal tester and mrt tester to create more
-complicated scenario.
+As you can see, you can mix normal tester and mrt tester to create more complicated scenario.
+
+```
+...
+- name: mrt-injector-gobgp
+  type: mrt
+  neighbors:
+    10.10.0.200:
+      as: 1200
+      local-address: 10.10.0.200
+      router-id: 10.10.0.200
+      mrt-file: /path/to/mrt/file1
+- name: mrt-injector-exabgp
+  type: mrt
+  mrt_injector: exabgp
+  mrt-file: /path/to/mrt/file2
+  neighbors:
+    10.10.0.201:
+      as: 1201
+      local-address: 10.10.0.201
+      router-id: 10.10.0.201
+    10.10.0.202:
+      as: 1202
+      local-address: 10.10.0.202
+      router-id: 10.10.0.202
+      mrt-file: /path/to/mrt/file3
+```
+
+Here, two testers are configured:
+- the first one uses GoBGP and injects routes from file1
+- the second one sets up 2 neighbors: 10.10.0.201 injects routes from file2 (configured at tester level), while 10.10.0.202 injects routes from file3.
+
+GoBGP injectors can be further configured with the following options:
+- `only-best`: True/False, to inject only best paths
+- `count` and `skip`: with this configuration, the mrt tester will inject *count* routes taken from the MRT file with *skip* offset to the target router.
+
+ExaBGP testers accept the following options:
+- `high-perf`: True/False, to enable [ExaBGP High Performance mode](https://github.com/Exa-Networks/exabgp/wiki/High-Performance).

@@ -34,3 +34,26 @@ RUN git clone https://github.com/Exa-Networks/exabgp && \
 RUN ln -s /root/exabgp /exabgp
 '''.format(checkout)
         super(ExaBGP, cls).build_image(force, tag, nocache)
+
+
+class ExaBGP_MRTParse(Container):
+
+    GUEST_DIR = '/root/config'
+
+    def __init__(self, name, host_dir, conf, image='bgperf/exabgp_mrtparse'):
+        super(ExaBGP_MRTParse, self).__init__('bgperf_exabgp_mrtparse_' + name, image, host_dir, self.GUEST_DIR, conf)
+
+    @classmethod
+    def build_image(cls, force=False, tag='bgperf/exabgp_mrtparse', checkout='HEAD', nocache=False):
+        cls.dockerfile = '''
+FROM ubuntu:latest
+WORKDIR /root
+RUN apt-get update && apt-get install -qy git python python-setuptools gcc python-dev
+RUN easy_install pip
+RUN git clone https://github.com/Exa-Networks/exabgp && \
+(cd exabgp && git checkout {0} && pip install six && pip install -r requirements.txt && python setup.py install)
+RUN ln -s /root/exabgp /exabgp
+RUN git clone https://github.com/t2mune/mrtparse.git && \
+(cd mrtparse && python setup.py install)
+'''.format(checkout)
+        super(ExaBGP_MRTParse, cls).build_image(force, tag, nocache)

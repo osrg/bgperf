@@ -29,12 +29,12 @@ from pyroute2 import IPRoute
 from socket import AF_INET
 from nsenter import Namespace
 from base import *
-from exabgp import ExaBGP
+from exabgp import ExaBGP, ExaBGP_MRTParse
 from gobgp import GoBGP, GoBGPTarget
 from bird import BIRD, BIRDTarget
 from quagga import Quagga, QuaggaTarget
 from tester import ExaBGPTester
-from mrt_tester import GoBGPMRTTester
+from mrt_tester import GoBGPMRTTester, ExaBGPMrtTester
 from monitor import Monitor
 from settings import dckr
 from Queue import Queue
@@ -92,6 +92,7 @@ def doctor(args):
 
 def prepare(args):
     ExaBGP.build_image(args.force, nocache=args.no_cache)
+    ExaBGP_MRTParse.build_image(args.force, nocache=args.no_cache)
     GoBGP.build_image(args.force, nocache=args.no_cache)
     Quagga.build_image(args.force, checkout='quagga-1.0.20160309', nocache=args.no_cache)
     BIRD.build_image(args.force, nocache=args.no_cache)
@@ -100,6 +101,8 @@ def prepare(args):
 def update(args):
     if args.image == 'all' or args.image == 'exabgp':
         ExaBGP.build_image(True, checkout=args.checkout, nocache=args.no_cache)
+    if args.image == 'all' or args.image == 'exabgp_mrtparse':
+        ExaBGP_MRTParse.build_image(True, checkout=args.checkout, nocache=args.no_cache)
     if args.image == 'all' or args.image == 'gobgp':
         GoBGP.build_image(True, checkout=args.checkout, nocache=args.no_cache)
     if args.image == 'all' or args.image == 'quagga':
@@ -124,6 +127,7 @@ def bench(args):
 
         for ctn_name in get_ctn_names():
             if ctn_name.startswith(ExaBGPTester.CONTAINER_NAME_PREFIX) or \
+                ctn_name.startswith(ExaBGPMrtTester.CONTAINER_NAME_PREFIX) or \
                 ctn_name.startswith(GoBGPMRTTester.CONTAINER_NAME_PREFIX):
                 print 'removing tester container', ctn_name
                 dckr.remove_container(ctn_name, force=True)
@@ -290,7 +294,17 @@ def bench(args):
             if tester_type == 'normal':
                 tester_class = ExaBGPTester
             elif tester_type == 'mrt':
-                tester_class = GoBGPMRTTester
+                if 'mrt_injector' not in tester:
+                    mrt_injector = 'gobgp'
+                else:
+                    mrt_injector = tester['mrt_injector']
+                if mrt_injector == 'gobgp':
+                    tester_class = GoBGPMRTTester
+                elif mrt_injector == 'exabgp':
+                    tester_class = ExaBGPMrtTester
+                else:
+                    print 'invalid mrt_injector:', mrt_injector
+                    sys.exit(1)
             else:
                 print 'invalid tester type:', tester_type
                 sys.exit(1)
@@ -494,7 +508,7 @@ if __name__ == '__main__':
     parser_prepare.set_defaults(func=prepare)
 
     parser_update = s.add_parser('update', help='rebuild bgp docker images')
-    parser_update.add_argument('image', choices=['exabgp', 'gobgp', 'bird', 'quagga', 'all'])
+    parser_update.add_argument('image', choices=['exabgp', 'exabgp_mrtparse', 'gobgp', 'bird', 'quagga', 'all'])
     parser_update.add_argument('-c', '--checkout', default='HEAD')
     parser_update.add_argument('-n', '--no-cache', action='store_true')
     parser_update.set_defaults(func=update)
