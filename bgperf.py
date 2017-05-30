@@ -92,7 +92,7 @@ def doctor(args):
 def prepare(args):
     ExaBGP.build_image(args.force, nocache=args.no_cache)
     GoBGP.build_image(args.force, nocache=args.no_cache)
-    Quagga.build_image(args.force, nocache=args.no_cache)
+    Quagga.build_image(args.force, checkout='quagga-1.0.20160309', nocache=args.no_cache)
     BIRD.build_image(args.force, nocache=args.no_cache)
 
 
