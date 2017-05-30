@@ -27,8 +27,8 @@ WORKDIR /root
 RUN apt-get update && apt-get install -qy git autoconf libtool gawk make \
 flex bison libncurses-dev libreadline6-dev
 RUN apt-get install -qy flex
-RUN git clone https://gitlab.labs.nic.cz/labs/bird.git bird && \
-(cd bird && git checkout {0} && autoconf && ./configure && make && make install)
+RUN git clone https://gitlab.labs.nic.cz/labs/bird.git bird
+RUN cd bird && git checkout {0} && autoreconf -i && ./configure && make && make install
 '''.format(checkout)
         super(BIRD, cls).build_image(force, tag, nocache)
 
