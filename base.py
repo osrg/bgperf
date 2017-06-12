@@ -226,7 +226,7 @@ class Target(Container):
         if not self.use_existing_config():
             self.write_config(scenario_global_conf)
 
-        self.exec_startup_cmd()
+        self.exec_startup_cmd(detach=True)
 
         return ctn
 
