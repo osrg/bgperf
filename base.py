@@ -256,12 +256,15 @@ class Tester(Container):
         output = self.exec_startup_cmd(stream=True, detach=False)
 
         cnt = 0
+        prev_pid = 0
         for lines in output:
             for line in lines.strip().split('\n'):
-                cnt += 1
-                if cnt % 2 == 1:
+                pid = int(line.split('|')[2])
+                if pid != prev_pid:
+                    prev_pid = pid
+                    cnt += 1
                     if cnt > 1:
                         rm_line()
-                    print 'tester booting.. ({0}/{1})'.format(cnt/2 + 1, len(self.conf.get('neighbors', {}).values()))
+                    print 'tester booting.. ({0}/{1})'.format(cnt, len(self.conf.get('neighbors', {}).values()))
 
         return ctn
