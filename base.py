@@ -176,7 +176,8 @@ class Container(object):
                 system_delta = float(system) - float(prev_system)
                 if system_delta > 0.0 and cpu_delta > 0.0:
                     cpu_percentage = (cpu_delta / system_delta) * float(cpu_num) * 100.0
-                queue.put({'who': self.name, 'cpu': cpu_percentage, 'mem': stat['memory_stats']['usage']})
+                mem_usage = stat['memory_stats'].get('usage', 0)
+                queue.put({'who': self.name, 'cpu': cpu_percentage, 'mem': mem_usage})
 
         t = Thread(target=stats)
         t.daemon = True
