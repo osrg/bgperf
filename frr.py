@@ -16,7 +16,6 @@
 from base import *
 
 class FRRouting(Container):
-
     CONTAINER_NAME = None
     GUEST_DIR = '/root/config'
 
@@ -70,7 +69,7 @@ RUN cd frr && make install
 # is this still necessary?
 RUN ldconfig
 '''.format(checkout)
-        super(FRR, cls).build_image(force, tag, nocache)
+        super(FRRouting, cls).build_image(force, tag, nocache)
 
 
 class FRRoutingTarget(FRRouting, Target):
