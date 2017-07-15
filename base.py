@@ -258,9 +258,9 @@ class Tester(Container):
 
         cnt = 0
         prev_pid = 0
-        for lines in output:
+        for lines in output: # This is the ExaBGP output
             for line in lines.strip().split('\n'):
-                pid = int(line.split('|')[2])
+                pid = int(line.split('|')[1]) # pid is in field 1 for ExaBGP v4.0.2-1c737d99 it is field 2 for ExaBGP 3.x
                 if pid != prev_pid:
                     prev_pid = pid
                     cnt += 1
