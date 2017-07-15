@@ -15,68 +15,97 @@
 
 from base import *
 
-class FRR(Container):
-    def __init__(self, name, host_dir, guest_dir='/root/config', image='bgperf/frr'):
-        super(FRR, self).__init__(name, image, host_dir, guest_dir)
+class FRRouting(Container):
+
+    CONTAINER_NAME = None
+    GUEST_DIR = '/root/config'
+
+    def __init__(self, host_dir, conf, image='bgperf/frr'):
+        super(FRRouting, self).__init__(self.CONTAINER_NAME, image, host_dir, self.GUEST_DIR, conf)
 
     @classmethod
     def build_image(cls, force=False, tag='bgperf/frr', checkout='HEAD', nocache=False):
         cls.dockerfile = '''
-FROM ubuntu:latest
+FROM ubuntu:16.04
 WORKDIR /root
+# create users and groups for least-privilege support
+RUN groupadd -g 92 frr
+RUN groupadd -r -g 85 frrvty
+RUN adduser --system --ingroup frr --home /var/run/frr/ \
+   --gecos "FRR suite" --shell /sbin/nologin frr
+RUN usermod -a -G frrvty frr
+# install dependenciens
 RUN apt-get update && apt-get install -y \
-    git autoconf libtool gawk libreadline-dev make bison flex \
-    libpython-dev pkg-config libjson-c-dev libc-ares-dev
-RUN addgroup --system --gid 92 frr
-RUN addgroup --system --gid 85 frrvty
-RUN adduser --system --ingroup frr --home /var/run/frr \
-    --gecos "FRR suite" --shell /bin/false frr
-RUN usermod -G frrvty frr
-RUN git clone --branch stable/3.0 https://github.com/FRRouting/frr.git frr
-RUN cd frr; ./bootstrap.sh; ./configure \
+    git autoconf automake libtool make gawk libreadline-dev \
+    texinfo dejagnu pkg-config libpam0g-dev libjson-c-dev bison flex \
+    python-pytest libc-ares-dev python3-dev libsystemd-dev
+
+RUN git clone https://github.com/FRRouting/frr.git frr
+# build, including examples and documentation to disable '--disable-doc'
+RUN cd frr && git checkout {0} && ./bootstrap.sh && \
+./configure \
     --prefix=/usr \
+    --enable-exampledir=/usr/share/doc/frr/examples/ \
     --localstatedir=/var/run/frr \
     --sbindir=/usr/lib/frr \
     --sysconfdir=/etc/frr \
-    --enable-vtysh \
     --enable-pimd \
+    --enable-watchfrr \
+    --enable-ospfclient=yes \
+    --enable-ospfapi=yes \
     --enable-multipath=64 \
     --enable-user=frr \
     --enable-group=frr \
     --enable-vty-group=frrvty \
-    --disable-doc && \
-    make -j2 && make install
+    --enable-configfile-mask=0640 \
+    --enable-logfile-mask=0640 \
+    --enable-rtadv \
+    --enable-tcp-zebra \
+    --enable-fpm \
+    --enable-vtysh \
+    --with-pkg-git-version \
+    --with-pkg-extra-version=-bgperf_frr
+RUN cd frr && make -j2 && make check
+RUN cd frr && make install
+# is this still necessary?
 RUN ldconfig
 '''.format(checkout)
         super(FRR, cls).build_image(force, tag, nocache)
 
-    def write_config(self, conf, name='bgpd.conf'):
+
+class FRRoutingTarget(FRRouting, Target):
+
+    CONTAINER_NAME = 'bgperf_frrouting_target'
+    CONFIG_FILE_NAME = 'bgpd.conf'
+
+    def write_config(self, scenario_global_conf):
+
         config = """hostname bgpd
 password zebra
 router bgp {0}
 bgp router-id {1}
-""".format(conf['target']['as'], conf['target']['router-id'])
+""".format(self.conf['as'], self.conf['router-id'])
 
         def gen_neighbor_config(n):
-            local_addr = n['local-address'].split('/')[0]
+            local_addr = n['local-address']
             c = """neighbor {0} remote-as {1}
 neighbor {0} advertisement-interval 1
 neighbor {0} route-server-client
 neighbor {0} timers 30 90
-""".format(local_addr, n['as'])
+""".format(local_addr, n['as']) # adjust BGP hold-timers if desired
             if 'filter' in n:
                 for p in (n['filter']['in'] if 'in' in n['filter'] else []):
                     c += 'neighbor {0} route-map {1} export\n'.format(local_addr, p)
             return c
 
-        with open('{0}/{1}'.format(self.host_dir, name), 'w') as f:
+        with open('{0}/{1}'.format(self.host_dir, self.CONFIG_FILE_NAME), 'w') as f:
             f.write(config)
-            for n in conf['tester']['peers'].values() + [conf['monitor']]:
+            for n in list(flatten(t.get('neighbors', {}).values() for t in scenario_global_conf['testers'])) + [scenario_global_conf['monitor']]:
                 f.write(gen_neighbor_config(n))
 
-            if 'policy' in conf:
+            if 'policy' in scenario_global_conf:
                 seq = 10
-                for k, v in conf['policy'].iteritems():
+                for k, v in scenario_global_conf['policy'].iteritems():
                     match_info = []
                     for i, match in enumerate(v['match']):
                         n = '{0}_match_{1}'.format(k, i)
@@ -108,24 +137,13 @@ neighbor {0} timers 30 90
 
                     seq += 10
 
-        self.config_name = name
-
-    def run(self, conf, brname='', cpus=''):
-        ctn = super(FRR, self).run(brname, cpus=cpus)
-
-        if self.config_name == None:
-            self.write_config(conf)
-
-        startup = '''#!/bin/bash
-ulimit -n 65536
-ip a add {0} dev eth1
-bgpd -f {1}/{2}
-'''.format(conf['target']['local-address'], self.guest_dir, self.config_name)
-        filename = '{0}/start.sh'.format(self.host_dir)
-        with open(filename, 'w') as f:
-            f.write(startup)
-        os.chmod(filename, 0777)
-        i = dckr.exec_create(container=self.name, cmd='{0}/start.sh'.format(self.guest_dir))
-        dckr.exec_inspect(i['Id'])
-        dckr.exec_start(i['Id'], detach=True)
-        return ctn
+    def get_startup_cmd(self):
+        return '\n'.join(
+            ['#!/bin/bash',
+             'ulimit -n 65536',
+             'mkdir /etc/frr',
+             'cp {guest_dir}/{config_file_name} /etc/frr/{config_file_name} && chown frr:frr /etc/frr/{config_file_name}',
+             '/usr/lib/frr/bgpd -u frr -f /etc/frr/{config_file_name}']
+        ).format(
+            guest_dir=self.guest_dir,
+            config_file_name=self.CONFIG_FILE_NAME)
