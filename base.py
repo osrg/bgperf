@@ -260,7 +260,16 @@ class Tester(Container):
         prev_pid = 0
         for lines in output: # This is the ExaBGP output
             for line in lines.strip().split('\n'):
-                pid = int(line.split('|')[1]) # pid is in field 1 for ExaBGP v4.0.2-1c737d99 it is field 2 for ExaBGP 3.x
+                fields = line.split('|')
+                # Get PID from ExaBGP output
+                try:
+                    # ExaBGP Version >= 4
+                    # e.g. 00:00:00 | 111 | control | command/comment
+                    pid = int(fields[1])
+                except ValueError:
+                    # ExaBGP Version = 3
+                    # e.g. 00:00:00 | INFO | 111 | control | command
+                    pid = int(fields[2])
                 if pid != prev_pid:
                     prev_pid = pid
                     cnt += 1
