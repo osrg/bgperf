@@ -48,10 +48,7 @@ RUN cd frr && git checkout {0} && ./bootstrap.sh && \
     --localstatedir=/var/run/frr \
     --sbindir=/usr/lib/frr \
     --sysconfdir=/etc/frr \
-    --enable-pimd \
     --enable-watchfrr \
-    --enable-ospfclient=yes \
-    --enable-ospfapi=yes \
     --enable-multipath=64 \
     --enable-user=frr \
     --enable-group=frr \
@@ -59,15 +56,9 @@ RUN cd frr && git checkout {0} && ./bootstrap.sh && \
     --enable-configfile-mask=0640 \
     --enable-logfile-mask=0640 \
     --enable-rtadv \
-    --enable-tcp-zebra \
-    --enable-fpm \
-    --enable-vtysh \
     --with-pkg-git-version \
     --with-pkg-extra-version=-bgperf_frr
-RUN cd frr && make -j2 && make check
-RUN cd frr && make install
-# is this still necessary?
-RUN ldconfig
+RUN cd frr && make -j2 && make check && make install
 '''.format(checkout)
         super(FRRouting, cls).build_image(force, tag, nocache)
 
